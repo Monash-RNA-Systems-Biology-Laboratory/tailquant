@@ -1,4 +1,17 @@
 
+# Filename convention
+fn <- function(dir, subdir, ...) file.path(dir, subdir, paste0(...))
+
+save_parquet <- function(obj, dir, subdir, ...) {
+    dir.create(dir, showWarnings=FALSE)
+    dir.create(file.path(dir, subdir), showWarnings=FALSE)
+    arrow::write_parquet(obj, fn(dir, subdir, ...))
+}
+
+load_parquet <- function(dir, subdir, ...) {
+    arrow::open_dataset(fn(dir, subdir, ...))
+}
+
 #' Load site information from Tail Tools output
 #'
 #' @return
@@ -91,5 +104,93 @@ load_tt_sample <- function(path) {
         dplyr::arrange(chr,strand,pos) #Improves compressability
     
     alignments
+}
+
+#' @export
+ingest_tt <- function(
+        out_dir, in_dir, 
+        site_pad=10,
+        min_tail=19,
+        length_trim=5,
+        steps=c("samples","sites","reads","sited_reads","tail_counts","stats")) {
+    
+    assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
+    
+    if ("samples" %in% steps) {
+        meta <- jsonlite::fromJSON(file.path(in_dir, "plotter-config.json"))
+        sample_names <- meta$samples$name
+        
+        dplyr::tibble(sample=sample_names) |>
+            save_parquet(out_dir,".","samples.parquet")
+    }
+    
+    sample_names <- load_parquet(out_dir,".","samples.parquet") |> 
+        dplyr::collect() |> 
+        dplyr::pull(sample)
+    
+    if ("sites" %in% steps) {
+        load_tt_sites(in_dir) |>
+            save_parquet(out_dir,".","sites.parquet")
+    }
+    
+    if ("reads" %in% steps) {
+        for(sample in sample_names) {
+            message("Ingesting ", sample)
+            file.path(in_dir,"samples",sample) |>
+                load_tt_sample() |>
+                save_parquet(out_dir,"reads",sample,".reads.parquet")      
+        }
+    }
+    
+    if ("sited_reads" %in% steps) {
+        sites <- load_parquet(out_dir,".","sites.parquet") |> dplyr::collect()
+        
+        for(sample in sample_names) {
+            message("Siting ", sample)
+            load_parquet(out_dir,"reads",sample,".reads.parquet") |>
+                site_reads(sites, site_pad=site_pad) |>
+                save_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet")
+        }
+        
+        rm(sites)
+    }
+    
+    if ("tail_counts" %in% steps) {
+        for(sample in sample_names) {
+            message("Counting ", sample)
+            load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
+                count_tails(min_tail=min_tail, length_trim=length_trim) |>
+                save_parquet(out_dir,"tail_counts",sample,".tail_counts.parquet")
+        }
+    }
+    
+    if ("stats" %in% steps) {
+        tq <- load_tq(out_dir)
+        calc_site_stats(tq) |>
+            save_parquet(out_dir,".","sites.parquet")
+        rm(tq)
+    }
+}
+
+
+#' @export
+load_tq <- function(in_dir) {
+    sites <- load_parquet(in_dir, ".", "sites.parquet")
+    samples <- load_parquet(in_dir, ".", "samples.parquet") |> 
+        dplyr::collect()
+    
+    samples$reads <- purrr::map(samples$sample, \(sample) {
+        load_parquet(in_dir,"reads",sample,".reads.parquet")
+    })
+    
+    samples$sited_reads <- purrr::map(samples$sample, \(sample) {
+        load_parquet(in_dir,"sited_reads",sample,".sited_reads.parquet")
+    })
+    
+    samples$tail_counts <- purrr::map(samples$sample, \(sample) {
+        load_parquet(in_dir,"tail_counts",sample,".tail_counts.parquet")
+    })
+    
+    list(sites=sites, samples=samples)
 }
 

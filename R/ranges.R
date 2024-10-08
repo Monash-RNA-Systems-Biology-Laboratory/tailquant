@@ -1,5 +1,6 @@
 
-# Spend as little time as possible with GRanges objects
+# The focus in this package is on arrow and tidyverse data structures.
+# These functions ease use of Bioconductor algorithms.
 
 strand_to_int <- function(strand) ifelse(strand=="-",-1L,1L)
 strand_to_char <- function(strand) ifelse(strand<0,"-","+")
