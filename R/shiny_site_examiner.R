@@ -2,37 +2,50 @@
 site_examiner_ui <- function(title) {
     ui <- shiny::fluidPage(
         shiny::titlePanel(title),
-        #,shiny::sidebarLayout(shiny::div(), shiny::div())
-        shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
-        shiny::numericInput("min_n", "Minimum n_tail", value=1, min=1, step=1),
-        shiny::numericInput("heatmap_rows", "Heatmap sites to show", value=50, min=1, step=1),
-        shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
-        shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length."),
-        DT::DTOutput("table"),
+        shiny::sidebarLayout(
+            shiny::sidebarPanel(
+                shiny::numericInput("top_n", "List this many top sites by n_tail_ended (0=all)", value=0, min=0, step=1),
+                shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
+                shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
+                shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
+                shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length.")
+            ), 
+            shiny::mainPanel(
+                DT::DTOutput("table")
+            )
+        ),
         shiny::tabsetPanel(
             shiny::tabPanel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800)),
             shiny::tabPanel("Site reverse cumulative distribution", plot_ui("survival_plot", width=1000, height=600)),
             shiny::tabPanel("Site density", plot_ui("density_plot", width=1000, height=600)),
             shiny::tabPanel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
-            shiny::tabPanel("Site read details", plot_ui("detail_plot", width=1000, height=800))
+            shiny::tabPanel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
+            shiny::tabPanel("Read counts", shiny::tableOutput("read_counts"))
         ),
-        shiny::div(style="height: 1000px")
+        shiny::h2("Explanation"),
+        shiny::p("n_tail = Number of reads with a poly(A) tail."),
+        shiny::p("n_tail_ended = Number of reads with a poly(A) tail that ended before the end of the read."),
+        shiny::p("tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length."),
+        shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first.")
     )
     
     ui
 }
 
 site_examiner_server <- function(tq, input,output,session) {
-    sites <- dplyr::collect(tq$sites)
+    sites <- tq$sites
     samples <- tq$samples
     
     
     df <- shiny::reactive({
-        sites |>
-            dplyr::select(
+        result <- sites |>
+            dplyr::transmute(
                 site, name, location, n_tail=n, n_tail_ended=n_died, 
-                tail90, tail50, tail10, gene_id, biotype, product) |>
-            dplyr::filter(n_tail >= .env$input$min_n)
+                tail90, tail50, tail10, tightness=tail90/tail10, gene_id, biotype) |>
+            dplyr::arrange(-n_tail_ended)
+        if (input$top_n > 0)
+            result <- dplyr::slice_head(result, n=input$top_n)
+        dplyr::collect(result)
     })
     
     selected <- reactive({
@@ -49,14 +62,17 @@ site_examiner_server <- function(tq, input,output,session) {
         if (input$show_samples) {
             names <- samples$sample
             tail_counts <- samples$tail_counts |>
-                purrr::map(filter, site == .env$site)
+                purrr::map(dplyr::filter, site == .env$site)
         } else {
             names <- "Combined"
-            tail_counts <- dplyr::filter(sites, site == .env$site)$tail_counts
+            tail_counts <- dplyr::filter(sites, site == .env$site) |> 
+                dplyr::collect()
+            tail_counts <- tail_counts$tail_counts
         }
         
-        tibble(
+        dplyr::tibble(
             name = names,
+            tail_counts = tail_counts,
             km = purrr::map(tail_counts, calc_km, assume_all_died=input$assume_all_died))
     })
     
@@ -74,9 +90,8 @@ site_examiner_server <- function(tq, input,output,session) {
             rownames=FALSE, #width="100%", 
             class='compact cell-border hover',
             extensions='Buttons'
-        ) #|>
-          #  formatRound(c("cpm","median","iqr"),0) |>
-          #  formatRound(c("bimodality_ratio","madmed","mean","sd"),3)
+        ) |>
+          DT::formatRound(c("tightness"),2)
     })
     
     plot_server("survival_plot", \() {
@@ -111,16 +126,26 @@ site_examiner_server <- function(tq, input,output,session) {
     plot_server("heatmap", \() { 
         req(input$table_rows_all)
         sites_wanted <- df()$site[ head(input$table_rows_all, input$heatmap_rows) ]
-        this_sites <- sites[match(sites_wanted, sites$site),]
+        this_sites <- dplyr::filter(sites, site %in% .env$sites_wanted) |> dplyr::collect()
+        this_sites <- this_sites[match(sites_wanted, this_sites$site),]
         
         kms <- purrr::map(this_sites$tail_counts, calc_km, assume_all_died=input$assume_all_died)
-        names <- paste(replace_na(this_sites$name,""), this_sites$site)
+        names <- paste(tidyr::replace_na(this_sites$name,""), this_sites$site)
         
         p <- plot_km_density_heatmap(kms, names,
             min_tail=get_attr(sites, "min_tail", 0),
             max_tail=get_attr(sites, "max_tail"),
             step=input$step)
         print(p)
+    })
+    
+    output$read_counts <- shiny::renderTable(digits=0, {
+        df <- selected_kms()
+        df$tail_counts <- purrr::map(df$tail_counts, dplyr::collect)
+        dplyr::tibble(
+            name=df$name,
+            n_tail=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_event)),
+            n_tail_ended=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_died)))
     })
 }
 

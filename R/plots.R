@@ -27,7 +27,7 @@ plot_tail_detail <- function(reads, min_tail=0) {
         ggplot2::coord_fixed(expand=FALSE, xlim=c(0,max(df$genomic_bases)+1), ylim=c(0,max(df$tail)+1))+
         ggplot2::labs(x="Genomic bases",y="Tail length")+
         theme() +
-        ggplot2::theme(panel.background = element_rect("#666666"))
+        ggplot2::theme(panel.background = ggplot2::element_rect("#666666"))
 }
 
 #' @export
@@ -38,13 +38,13 @@ plot_km_survival <- function(kms, names="Data", min_tail, max_tail=NULL) {
          max_tail <- max(purrr::map_dbl(kms, \(item) max(min_tail, item$tail)))
     
     names <- forcats::fct_inorder(names)
-    df <- tibble(name=.env$names, km=.env$kms) |>
-         unnest("km") |>
-         pivot_longer(c(prop_before, prop_after), names_to="what", values_to="prop") |>
-         select(name, tail, prop)
-    df <- bind_rows(tibble(name=.env$names, tail=min_tail,prop=1), df)
+    df <- dplyr::tibble(name=.env$names, km=.env$kms) |>
+         tidyr::unnest("km") |>
+         tidyr::pivot_longer(c(prop_before, prop_after), names_to="what", values_to="prop") |>
+         dplyr::select(name, tail, prop)
+    df <- dplyr::bind_rows(dplyr::tibble(name=.env$names, tail=min_tail,prop=1), df)
     
-    ggplot(df) + 
+    ggplot2::ggplot(df) + 
         ggplot2::aes(x=tail,y=prop,color=name,group=name) + 
         ggplot2::geom_path() + 
         ggplot2::coord_cartesian(xlim=c(min_tail,max_tail), ylim=c(0,1)) +

@@ -124,7 +124,7 @@ calc_site_stats <- function(tq) {
             tail90=purrr::map_dbl(km, km_quantile, 0.9))
     
     if (!is.null(sites))
-        result <- left_join(result, sites, by="site", copy=TRUE)
+        result <- dplyr::left_join(result, sites, by="site", copy=TRUE)
     
     result |>
         set_attr("min_tail", get_attr(tail_counts, "min_tail")) |>
