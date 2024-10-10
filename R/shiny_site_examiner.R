@@ -36,6 +36,10 @@ site_examiner_server <- function(tq, input,output,session) {
     sites <- tq$sites
     samples <- tq$samples
     
+    if (!"color" %in% colnames(samples)) {
+        samples$color <- scales::hue_pal()(nrow(samples))
+    }
+    
     
     df <- shiny::reactive({
         result <- sites |>
@@ -98,7 +102,11 @@ site_examiner_server <- function(tq, input,output,session) {
         p <- plot_km_survival(selected_kms()$km, selected_kms()$name, 
             min_tail=get_attr(sites, "min_tail", 0),
             max_tail=get_attr(sites, "max_tail"))
-        if (!input$show_samples) p <- p + ggplot2::guides(color="none")
+        if (input$show_samples) 
+            p <- p + ggplot2::scale_color_discrete(type=samples$color)
+        else
+            p <- p + ggplot2::guides(color="none") + ggplot2::scale_color_discrete(type="black")
+            
         print(p)
     })
     
@@ -107,7 +115,11 @@ site_examiner_server <- function(tq, input,output,session) {
             min_tail=get_attr(sites, "min_tail", 0),
             max_tail=get_attr(sites, "max_tail"),
             step=input$step)
-        if (!input$show_samples) p <- p + ggplot2::guides(color="none")
+        if (input$show_samples) 
+            p <- p + ggplot2::scale_color_discrete(type=samples$color)
+        else
+            p <- p + ggplot2::guides(color="none") + ggplot2::scale_color_discrete(type="black")
+        
         print(p)
     })
     
@@ -115,7 +127,8 @@ site_examiner_server <- function(tq, input,output,session) {
         p <- plot_km_density_heatmap(selected_kms()$km, selected_kms()$name, 
             min_tail=get_attr(sites, "min_tail", 0),
             max_tail=get_attr(sites, "max_tail"),
-            step=input$step)
+            step=input$step,
+            normalize_max=FALSE)
         print(p)
     })
     
@@ -151,7 +164,7 @@ site_examiner_server <- function(tq, input,output,session) {
 
 
 #' @export
-shiny_site_examiner <- function(tq, title="Tail distribution examiner") {    
+shiny_site_examiner <- function(tq, title="Tail distribution examiner") {
     shiny::shinyApp(
         site_examiner_ui(title)
         ,\(...) site_examiner_server(tq, ...)

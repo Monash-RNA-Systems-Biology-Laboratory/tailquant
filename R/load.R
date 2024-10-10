@@ -111,7 +111,7 @@ ingest_tt <- function(
         out_dir, in_dir, 
         site_pad=10,
         min_tail=19,
-        length_trim=5,
+        length_trim=10,
         steps=c("samples","sites","reads","sited_reads","tail_counts","stats")) {
     
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
