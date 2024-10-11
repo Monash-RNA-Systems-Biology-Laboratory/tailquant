@@ -20,7 +20,7 @@ site_examiner_ui <- function(title) {
             shiny::tabPanel("Site density", plot_ui("density_plot", width=1000, height=600)),
             shiny::tabPanel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
             shiny::tabPanel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            shiny::tabPanel("Read counts", shiny::tableOutput("read_counts"))
+            shiny::tabPanel("Site table", shiny::tableOutput("read_counts"))
         ),
         shiny::h2("Explanation"),
         shiny::p("n_tail = Number of reads with a poly(A) tail."),
@@ -158,7 +158,11 @@ site_examiner_server <- function(tq, input,output,session) {
         dplyr::tibble(
             name=df$name,
             n_tail=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_event)),
-            n_tail_ended=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_died)))
+            n_tail_ended=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_died)),
+            tail90=purrr::map_dbl(df$km,km_quantile,0.9),
+            tail50=purrr::map_dbl(df$km,km_quantile,0.5),
+            tail10=purrr::map_dbl(df$km,km_quantile,0.1)
+        )
     })
 }
 
