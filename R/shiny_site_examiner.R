@@ -133,14 +133,25 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     plot_server("detail_plot", \() {
-        plot_tail_detail(selected_reads()) |> print()
+        ## Could do individual plots, but it's quite slow, and also hard to make out.
+        #if (input$show_samples) {
+        #    plots <- purrr::map2(selected_reads(), samples$sample, \(reads,name) 
+        #        plot_tail_detail(reads) + ggplot2::labs(title=name))
+        #    patchwork::wrap_plots(plots, ncol=ceiling(sqrt(length(plots)))) |> print()
+        #} else {
+            plot_tail_detail(selected_reads()) |> print()
+        #}
     })
     
     plot_server("heatmap", \() { 
         req(input$table_rows_all)
         sites_wanted <- df()$site[ head(input$table_rows_all, input$heatmap_rows) ]
-        this_sites <- dplyr::filter(sites, site %in% .env$sites_wanted) |> dplyr::collect()
+        this_sites <- sites |>
+            dplyr::filter(site %in% .env$sites_wanted) |> 
+            dplyr::collect()
         this_sites <- this_sites[match(sites_wanted, this_sites$site),]
+        this_sites <- this_sites[!purrr::map_lgl(this_sites$tail_counts,is.null),]
+        req(nrow(this_sites) > 0)
         
         kms <- purrr::map(this_sites$tail_counts, calc_km, assume_all_died=input$assume_all_died)
         names <- paste(tidyr::replace_na(this_sites$name,""), this_sites$site)

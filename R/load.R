@@ -117,6 +117,7 @@ ingest_tt <- function(
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
     
     if ("samples" %in% steps) {
+        message("Step: samples")
         meta <- jsonlite::fromJSON(file.path(in_dir, "plotter-config.json"))
         sample_names <- meta$samples$name
         
@@ -129,42 +130,51 @@ ingest_tt <- function(
         dplyr::pull(sample)
     
     if ("sites" %in% steps) {
+        message("Step: sites")
         load_tt_sites(in_dir) |>
             save_parquet(out_dir,".","sites.parquet")
     }
     
     if ("reads" %in% steps) {
-        for(sample in sample_names) {
-            message("Ingesting ", sample)
+        message("Step: reads")
+        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+            #message("Ingesting ", sample)
             file.path(in_dir,"samples",sample) |>
                 load_tt_sample() |>
-                save_parquet(out_dir,"reads",sample,".reads.parquet")      
-        }
+                save_parquet(out_dir,"reads",sample,".reads.parquet")
+            NULL
+        })
     }
     
     if ("sited_reads" %in% steps) {
+        message("Step: sited_reads")
         sites <- load_parquet(out_dir,".","sites.parquet") |> dplyr::collect()
         
-        for(sample in sample_names) {
-            message("Siting ", sample)
+        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+            #message("Siting ", sample)
             load_parquet(out_dir,"reads",sample,".reads.parquet") |>
                 site_reads(sites, site_pad=site_pad) |>
                 save_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet")
-        }
+            NULL
+        })
         
         rm(sites)
     }
     
     if ("tail_counts" %in% steps) {
-        for(sample in sample_names) {
-            message("Counting ", sample)
+        message("Step: tail_counts")
+        #for(sample in sample_names) {
+        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+            #message("Counting ", sample)
             load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
                 count_tails(min_tail=min_tail, length_trim=length_trim) |>
                 save_parquet(out_dir,"tail_counts",sample,".tail_counts.parquet")
-        }
+            NULL
+        })
     }
     
     if ("stats" %in% steps) {
+        message("Step: stats")
         tq <- load_tq(out_dir)
         calc_site_stats(tq) |>
             save_parquet(out_dir,".","sites.parquet")

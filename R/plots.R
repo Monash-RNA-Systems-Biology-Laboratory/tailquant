@@ -23,9 +23,9 @@ plot_tail_detail <- function(reads, min_tail=0) {
         ggplot2::aes(x=genomic_bases,y=tail,fill=sqrt(n))+
         ggplot2::geom_hline(yintercept=min_tail-0.5)+
         ggplot2::geom_tile(width=1, height=1)+
-        ggplot2::scale_fill_viridis_c()+
+        ggplot2::scale_fill_viridis_c(labels=\(i) scales::comma(i*i))+
         ggplot2::coord_fixed(expand=FALSE, xlim=c(0,max(df$genomic_bases)+1), ylim=c(0,max(df$tail)+1))+
-        ggplot2::labs(x="Genomic bases",y="Tail length")+
+        ggplot2::labs(x="Genomic bases",y="Tail length",fill="Count")+
         theme() +
         ggplot2::theme(panel.background = ggplot2::element_rect("#666666"))
 }

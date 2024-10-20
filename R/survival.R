@@ -114,7 +114,7 @@ calc_site_stats <- function(tq) {
     result <- tail_counts |>
         tidyr::nest(.by=site, .key="tail_counts") |>
         dplyr::mutate(
-            km=map_progress(tail_counts, "Kaplan-Meier calculation", calc_km),
+            km=purrr::map(tail_counts, calc_km, .progress=TRUE),
             n=purrr::map_dbl(tail_counts, \(df) sum(df$n_event)),
             n_died=purrr::map_dbl(tail_counts, \(df) sum(df$n_died)),
             tail10=purrr::map_dbl(km, km_quantile, 0.1),
@@ -123,8 +123,16 @@ calc_site_stats <- function(tq) {
             tail75=purrr::map_dbl(km, km_quantile, 0.75),
             tail90=purrr::map_dbl(km, km_quantile, 0.9))
     
-    if (!is.null(sites))
-        result <- dplyr::left_join(result, sites, by="site", copy=TRUE)
+    if (!is.null(sites)) {
+        # Delete any existing results
+        sites <- dplyr::collect(sites)
+        sites <- sites[ c("site",setdiff(colnames(sites),colnames(result))) ]
+        result <- sites |>
+            dplyr::full_join(result, by="site") |>
+            dplyr::mutate(
+                n=tidyr::replace_na(n,0), 
+                n_died=tidyr::replace_na(n_died,0))
+    }
     
     result |>
         set_attr("min_tail", get_attr(tail_counts, "min_tail")) |>
