@@ -45,7 +45,7 @@ site_examiner_server <- function(tq, input,output,session) {
         result <- sites |>
             dplyr::transmute(
                 site, name, location, n_tail=n, n_tail_ended=n_died, 
-                tail90, tail50, tail10, tightness=tail90/tail10, gene_id, biotype) |>
+                tail90, tail50, tail10, tightness=tail90/tail10, relation, biotype, gene_id) |>
             dplyr::arrange(-n_tail_ended)
         if (input$top_n > 0)
             result <- dplyr::slice_head(result, n=input$top_n)

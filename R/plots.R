@@ -48,7 +48,7 @@ plot_km_survival <- function(kms, names="Data", min_tail, max_tail=NULL) {
         ggplot2::aes(x=tail,y=prop,color=name,group=name) + 
         ggplot2::geom_path() + 
         ggplot2::coord_cartesian(xlim=c(min_tail,max_tail), ylim=c(0,1)) +
-        ggplot2::labs(x="Tail length", y="Reverse cumulative distribution") + 
+        ggplot2::labs(x="Tail length", y="Reverse cumulative distribution", color="") + 
         theme()
 }
 
@@ -67,18 +67,19 @@ plot_km_density <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1
         #geom_path(aes(y=n_event/sum(n_event)), color="#ff0000") +
         ggplot2::geom_path() +
         ggplot2::coord_cartesian(ylim=c(0,max(df$prop_died))) +
-        ggplot2::labs(x="Tail length", y="Proportion") +
+        ggplot2::labs(x="Tail length", y="Proportion", color="") +
         theme()
 }
 
 
 #' @export
 plot_km_density_heatmap <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1, normalize_max=TRUE) {
+    kms <- ensure_list(kms)
+    
     if (is.null(max_tail))
         max_tail <- purrr::map_dbl(kms, \(km) max(km$tail)) |> max()
     
-    kms <- ensure_list(kms) |>
-        purrr::map(km_complete, min_tail=min_tail, max_tail=max_tail)
+    kms <- purrr::map(kms, km_complete, min_tail=min_tail, max_tail=max_tail)
     
     df <- dplyr::tibble(name=forcats::fct_inorder(.env$names), km=.env$kms) |>
         tidyr::unnest("km") |>

@@ -1,6 +1,7 @@
 
 # df should have columns: tail, n_event, n_died (n_event includes n_died)
 # If assume_all_died=TRUE, set n_died <- n_event.
+#' @export
 calc_km <- function(df, assume_all_died=FALSE) {
     # Kaplan-Meier calculation
     km <- df |>
@@ -21,6 +22,7 @@ calc_km <- function(df, assume_all_died=FALSE) {
     km
 }
 
+#' @export
 km_quantile <- function(km, prop) {
     # Average if we exactly hit a proportion
     tail1 <- km$tail[ match(TRUE, km$prop_after <= prop) ]
