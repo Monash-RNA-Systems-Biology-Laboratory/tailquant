@@ -32,6 +32,40 @@ local_write_parquet <- function(filename, callback) {
     yield
 }
 
+
+#' @export
+scan_parquet <- function(filename, callback, columns=NULL, message="Processing") {
+    source <- arrow::mmap_open(filename, "read")
+    withr::defer(source$close())
+    
+    reader <- arrow::ParquetFileReader$create(source)
+    
+    col_names <- names(reader$GetSchema())
+    if (is.null(columns)) columns <- col_names
+    column_indices <- match(columns, col_names)-1 # 0 based!
+    assertthat::assert_that(!any(is.na(column_indices)))
+    
+    cli::cli_progress_bar(message, total=reader$num_row_groups)
+    
+    for(i in seq_len(reader$num_row_groups)-1L) {
+        callback(dplyr::collect(reader$ReadRowGroup(i, column_indices=column_indices)))
+        cli::cli_progress_update(1)
+    }
+}
+
+
+#' @export
+scan_query <- function(query, callback) {
+    scanner <- arrow::Scanner$create(query)
+    reader <- scanner$ToRecordBatchReader()
+    repeat {
+        item <- reader$read_next_batch()
+        if (is.null(item)) break
+        callback(dplyr::collect(item))
+    }
+}
+
+
 #' @export
 local_queue <- function(workers = future::nbrOfWorkers()) {
     queue <- list()

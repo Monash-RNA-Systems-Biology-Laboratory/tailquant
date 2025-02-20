@@ -1,13 +1,19 @@
 
-#' @export
+ensure_samples <- function(samples) {
+    samples |>
+        tibble::as_tibble() |>
+        dplyr::select(sample, barcode)
+}
+
+# Helper function for process_paired
 scan_paired_chunks <- function(
         chunk1, chunk2, samples, max_mismatch, 
         clip_quality_char, clip_penalty,
         poly_penalty, suffix_penalty) {
     n <- length(chunk1) %/% 4
     i <- seq_len(n)
-    readnames1 <- stringr::str_match(chunk1[(i-1)*4+1], "@(\\S*)")[2]
-    readnames2 <- stringr::str_match(chunk2[(i-1)*4+1], "@(\\S*)")[2]
+    readnames1 <- stringr::str_match(chunk1[(i-1)*4+1], "@(\\S*)")[,2]
+    readnames2 <- stringr::str_match(chunk2[(i-1)*4+1], "@(\\S*)")[,2]
     assertthat::assert_that(identical(readnames1, readnames2))
     
     seq1 <- chunk1[(i-1)*4+2]
@@ -64,8 +70,11 @@ scan_paired_chunks <- function(
         poly_t_length=purrr::map_dbl(sr2,\(sr) sr[2]-sr[1]+1))
 }
 
+
+#' Initial loading and processing of Pooled PAT-Seq data into a parquet file
+#'
 #' @export
-process_paired <- function(
+ingest_read_pairs <- function(
         output_filename, reads1, reads2, 
         samples, max_mismatch=1,
         clip_quality_char="I", clip_penalty=4,
@@ -73,19 +82,14 @@ process_paired <- function(
         limit=Inf) {
     
     # Check/convert arguments
-    
-    samples <- samples |>
-        tibble::as_tibble() |>
-        dplyr::select(sample, barcode)
+    samples <- ensure_samples(samples)
     
     # Begin
     
     cli::cli_progress_bar("Scanning read pairs")
-    r1 <- gzfile(reads1, open="r")
-    #r1 <- pipe(paste0("unpigz - <", shQuote(reads1)), open="r")
+    r1 <- file(reads1, open="r")
     withr::defer(close(r1))
-    r2 <- gzfile(reads2, open="r")
-    #r2 <- pipe(paste0("unpigz - <", shQuote(reads2)), open="r")
+    r2 <- file(reads2, open="r")
     withr::defer(close(r2))
     
     yield <- local_write_parquet(output_filename)
@@ -114,7 +118,7 @@ process_paired <- function(
         poly_t_start=numeric(0),
         poly_t_length=numeric(0)))
     
-    chunk <- 1e5
+    chunk <- 2e5
     total <- 0
     repeat {
         lines_to_read <- 4*max(0, min(chunk, limit-total))
@@ -137,3 +141,82 @@ process_paired <- function(
         queue(\(item) yield(future::value(item)), future_result)
     }
 }
+
+
+#' Demultiplex into FASTQ files from parquet file
+#'
+#' @export
+demux_reads <- function(out_dir, in_file, sample_names=NULL) {
+    assertthat::assert_that(file.exists(in_file), msg="Input file doesn't exist.")
+    
+    
+    if (is.null(sample_names)) {
+        df <- arrow::open_dataset(in_file) |>
+            dplyr::distinct(sample) |>
+            dplyr::collect()
+        sample_names <- sort(na.omit(df$sample))
+    }
+    
+    # Do each sample separately.
+    # A little inefficient, since it scans the parquet file for eachs sample.
+    
+    queue <- local_queue()
+    
+    for(sample in sample_names) {
+        future_result <- future::future(seed=NULL, {
+            filename <- file.path(out_dir, paste0(sample, ".fastq.gz"))
+            con <- gzfile(filename, open="w")
+            withr::defer(close(con))
+            
+            #arrow::open_dataset(in_file) |>
+            #dplyr::filter(sample %in% .env$sample) |>
+            #dplyr::select(readname, barcode, umi, read_1_seq, read_1_qual) |>
+            #scan_query(\(df) {
+            scan_parquet(in_file, 
+                columns=c("readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual"), 
+                callback=\(df) {
+                    df <- dplyr::filter(df, sample == .env$sample)
+                    lines <- rbind(
+                        paste0("@",df$readname, "_", df$barcode,"_",df$umi),
+                        df$read_1_seq,
+                        rep("+",nrow(df)),
+                        df$read_1_qual)
+                    writeLines(lines, con=con)
+                })
+            
+            message(sample, " done")
+        })
+        
+        queue(future::value, future_result)
+    }    
+}   
+#    dir.create(out_dir, showWarnings=FALSE)
+#    n_samples <- length(sample_names)
+#    connections <- vector("list", n_samples)
+#    withr::defer(purrr::map(connections, \(con) if (!is.null(con)) close (con)))
+#    for(i in seq_len(n_samples)) {
+#        filename <- file.path(out_dir, paste0(sample_names[i], ".fastq.gz"))
+#        connections[[i]] <- gzfile(filename, open="w")
+#    }
+#    
+#    pq |>
+#    dplyr::select(readname, sample, barcode, umi, read_1_seq, read_1_qual) |>
+#    dplyr::filter(sample %in% .env$sample_names) |>
+#    scan_query(\(df) {
+#        matches <- match(df$sample, sample_names)
+#        for(i in seq_len(nrow(df))) {
+#            j <- matches[i]
+#            seq <- df$read_1_seq[i]
+#            qual <- df$read_1_qual[i]
+#            # TODO: clipping logic
+#            
+#            writeLines(
+#                c(
+#                    paste0(">", df$readname[i], "_", df$barcode[i],"_",df$umi[i]),
+#                    seq,
+#                    "@",
+#                    qual),
+#                con=connections[[j]])
+#        }
+#    })
+#}
