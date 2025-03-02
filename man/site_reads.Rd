@@ -10,5 +10,5 @@ site_reads(reads, sites, site_pad)
 \item{site_pad}{Reads ending within \link{position-site_pad, position+site_pad} will be counted to a site.}
 }
 \description{
-Join reads to sites
+If a read is near multiple sites, the nearest is chosen.
 }

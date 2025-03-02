@@ -42,6 +42,8 @@ km_complete <- function(km, min_tail=0, max_tail=NULL) {
 
 #' Join reads to sites
 #'
+#' If a read is near multiple sites, the nearest is chosen.
+#'
 #' @param site_pad Reads ending within [position-site_pad, position+site_pad] will be counted to a site.
 #'
 #' @export
@@ -54,7 +56,16 @@ site_reads <- function(reads, sites, site_pad) {
         sites$chr, sites$pos-site_pad, sites$pos+site_pad, sites$strand,
         reads$chr, reads$pos, reads$pos, reads$strand)
     
-    dplyr::tibble(site=sites$site[hits$index1], reads[hits$index2,]) |>
+    # If multiple hits, choose nearest to actual pos
+    hits$offset <- abs(reads$pos[hits$index2] - sites$pos[hits$index1])
+    #This was unexpectedly slow:
+    #hits <- dplyr::slice_min(hits, offset, n=1, by=index2, with_ties=FALSE)
+    #So:
+    hits <- dplyr::summarize(hits, index1=index1[which.min(offset)], .by=c(index2))
+    
+    dplyr::tibble(
+            site=sites$site[hits$index1], 
+            reads[hits$index2,]) |>
         arrow::as_arrow_table() |>
         dplyr::arrange(site, tail) |>
         arrow::as_arrow_table()
@@ -64,23 +75,45 @@ site_reads <- function(reads, sites, site_pad) {
 #'
 #' Count tail lengths observed at each site, and how many are considered censored.
 #'
+#' If umi column is present, weight each read by 1/n within UMI groups.
+#'
+#' UMI counts are n_event, n_died.
+#'
+#' Read counts are n_read_event, n_read_died.
+#'
 #' @param min_tail Tail lengths shorter than this are discarded.
 #'
 #' @param length_trim This many bases are effectively trimmed from the ends of reads.
 #'
 #' @export
 count_tails <- function(sited_reads, min_tail, length_trim) {
+    sited_reads <- sited_reads |>
+        arrow::as_arrow_table()
+    
+    if ("umi" %in% names(sited_reads)) {
+        sited_reads <- dplyr::mutate(
+            sited_reads,
+            weight = 1 / dplyr::n(),
+            .by = c(site, umi))
+    } else {
+        sited_reads <- dplyr::mutate(
+            sited_reads, 
+            weight = 1)
+    }
+        
     cumulation <- sited_reads |>
-        arrow::as_arrow_table() |> #Faster
         dplyr::transmute(
             site = site,
+            weight = weight,
             length = length-.env$length_trim,
-            died = genomic_bases+tail <= length,
-            tail = ifelse(died, tail, length-genomic_bases)) |>
+            died = tail_start+tail-1 < length,
+            tail = ifelse(died, tail, length-tail_start)) |>
         dplyr::filter(tail >= .env$min_tail) |>
         dplyr::summarise(
-            n_event = dplyr::n(),
-            n_died = sum(died),
+            n_event = sum(weight),
+            n_died = sum(weight * ifelse(died,1,0)),
+            n_read_event = dplyr::n(),
+            n_read_died = sum(died),
             .by = c(site, tail)) |>
         dplyr::arrange(site, tail) |>
         arrow::as_arrow_table() |>
@@ -98,7 +131,12 @@ combine_tail_counts <- function(tail_counts_list) {
     result <- tail_counts_list |>
         purrr::map(dplyr::collect) |>
         dplyr::bind_rows() |>
-        dplyr::summarise(n_event=sum(n_event), n_died=sum(n_died), .by=c(site, tail))
+        dplyr::summarise(
+            n_event=sum(n_event), 
+            n_died=sum(n_died), 
+            n_read_event=sum(n_read_event),
+            n_read_died=sum(n_read_died),
+            .by=c(site, tail))
     
     # TODO: check consistency
     result |>
@@ -117,6 +155,7 @@ calc_site_stats <- function(tq) {
         tidyr::nest(.by=site, .key="tail_counts") |>
         dplyr::mutate(
             km=purrr::map(tail_counts, calc_km, .progress=TRUE),
+            n_reads=purrr::map_dbl(tail_counts, \(df) sum(df$n_read_event)),
             n=purrr::map_dbl(tail_counts, \(df) sum(df$n_event)),
             n_died=purrr::map_dbl(tail_counts, \(df) sum(df$n_died)),
             tail10=purrr::map_dbl(km, km_quantile, 0.1),

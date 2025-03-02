@@ -158,7 +158,7 @@ demux_reads <- function(out_dir, in_file, sample_names=NULL) {
     }
     
     # Do each sample separately.
-    # A little inefficient, since it scans the parquet file for eachs sample.
+    # A little inefficient, since it scans the parquet file for each sample.
     
     queue <- local_queue()
     
@@ -168,10 +168,6 @@ demux_reads <- function(out_dir, in_file, sample_names=NULL) {
             con <- gzfile(filename, open="w")
             withr::defer(close(con))
             
-            #arrow::open_dataset(in_file) |>
-            #dplyr::filter(sample %in% .env$sample) |>
-            #dplyr::select(readname, barcode, umi, read_1_seq, read_1_qual) |>
-            #scan_query(\(df) {
             scan_parquet(in_file, 
                 columns=c("readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual"), 
                 callback=\(df) {
@@ -189,7 +185,10 @@ demux_reads <- function(out_dir, in_file, sample_names=NULL) {
         
         queue(future::value, future_result)
     }    
-}   
+}
+
+#Code to output files all at once. Would need to be vectorized at least to be performant.
+#
 #    dir.create(out_dir, showWarnings=FALSE)
 #    n_samples <- length(sample_names)
 #    connections <- vector("list", n_samples)

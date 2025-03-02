@@ -4,8 +4,8 @@
 \alias{load_tt_sample}
 \title{Load data from a Tail Tools sample directory}
 \usage{
-load_tt_sample(path)
+load_tt_sample(path, tail_source, read_pairs_file = NULL, limit = NA)
 }
 \description{
-Load data from a Tail Tools sample directory. Information about genomic length and tail length is included Multimappers are discarded. Only the 3' end position is kept.
+Load data from a Tail Tools sample directory. Information about genomic length and tail length is included. Multimappers are discarded. Only the 3' end position is kept.
 }

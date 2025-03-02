@@ -33,12 +33,19 @@ local_write_parquet <- function(filename, callback) {
 }
 
 
+#' Scan a parquet file
+#'
+#' Note it may be necessary for your callback to invoke gc() to avoid excess memory usage.
+#'
 #' @export
 scan_parquet <- function(filename, callback, columns=NULL, message="Processing") {
-    source <- arrow::mmap_open(filename, "read")
-    withr::defer(source$close())
+    #This doesn't seem to be needed:
+    #source <- arrow::mmap_open(filename, "read")
+    #withr::defer(source$close())
+    #reader <- arrow::ParquetFileReader$create(source)
     
-    reader <- arrow::ParquetFileReader$create(source)
+    # Using memory mapping seems to take up more and more memory, so disable
+    reader <- arrow::ParquetFileReader$create(filename, mmap=FALSE)
     
     col_names <- names(reader$GetSchema())
     if (is.null(columns)) columns <- col_names
@@ -48,6 +55,7 @@ scan_parquet <- function(filename, callback, columns=NULL, message="Processing")
     cli::cli_progress_bar(message, total=reader$num_row_groups)
     
     for(i in seq_len(reader$num_row_groups)-1L) {
+        # Note: important not to store loaded data in a variable, so it can be garbage collected ASAP
         callback(dplyr::collect(reader$ReadRowGroup(i, column_indices=column_indices)))
         cli::cli_progress_update(1)
     }
@@ -63,6 +71,40 @@ scan_query <- function(query, callback) {
         if (is.null(item)) break
         callback(dplyr::collect(item))
     }
+}
+
+
+#' Map GAlignments chunks
+#'
+#' Note: If limit is larger than chunk size, it is rounded up to a multiple of chunk size.
+#'
+#' TODO: Also provide a scan_ version.
+#'
+#' @export
+map_bam_chunks <- function(filename, param, callback, limit=NA, chunk=5e6) {
+    if (is.na(limit))
+        limit <- Inf
+    chunk <- min(chunk, limit)
+    
+    result <- list()
+    i <- 1
+    total <- 0
+    
+    f <- Rsamtools::BamFile(filename, yieldSize=chunk)
+    open(f)
+    withr::defer(close(f))
+    
+    while(total < limit) {
+        #TODO: Allow callback to garbage collect alignments
+        alignments <- GenomicAlignments::readGAlignments(f, param=param)
+        result[[i]] <- callback(alignments)
+        i <- i + 1
+        total <- total + length(alignments)
+        if (length(alignments) == 0) break
+        rm(alignments)
+    }
+    
+    result
 }
 
 

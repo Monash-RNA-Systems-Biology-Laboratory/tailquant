@@ -14,3 +14,10 @@ count_tails(sited_reads, min_tail, length_trim)
 \description{
 Count tail lengths observed at each site, and how many are considered censored.
 }
+\details{
+If umi column is present, weight each read by 1/n within UMI groups.
+
+UMI counts are n_event, n_died.
+
+Read counts are n_read_event, n_read_died.
+}

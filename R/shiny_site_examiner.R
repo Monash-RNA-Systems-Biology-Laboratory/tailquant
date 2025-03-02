@@ -26,8 +26,9 @@ site_examiner_ui <- function(tq, title) {
             shiny::tabPanel("Site table", shiny::tableOutput("read_counts"))
         ),
         shiny::h2("Explanation"),
-        shiny::p("n_tail = Number of reads with a poly(A) tail."),
-        shiny::p("n_tail_ended = Number of reads with a poly(A) tail that ended before the end of the read."),
+        shiny::p("n_tail_reads = Number of reads with a poly(A) tail."),
+        shiny::p("n_tail = Number of UMIs with a poly(A) tail."),
+        shiny::p("n_tail_ended = Number of UMIs with a poly(A) tail that ended before the end of the read."),
         shiny::p("tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length."),
         shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first.")
     )
@@ -45,9 +46,13 @@ site_examiner_server <- function(tq, input,output,session) {
     
     
     df <- shiny::reactive({
-        result <- sites |>
+        result <- sites
+        # Backwards compatability
+        if (!"n_reads" %in% names(result))
+            result <- dplyr::mutate(result, n_reads=NA)
+        result <- result |>
             dplyr::transmute(
-                site, name, location, n_tail=n, n_tail_ended=n_died, 
+                site, name, location, n_tail_reads=n_reads, n_tail=n, n_tail_ended=n_died, 
                 tail90, tail50, tail10, tightness=tail90/tail10, relation, biotype, gene_id) |>
             dplyr::arrange(-n_tail_ended)
         if (input$top_n > 0)
@@ -98,7 +103,8 @@ site_examiner_server <- function(tq, input,output,session) {
             class='compact cell-border hover',
             extensions='Buttons'
         ) |>
-          DT::formatRound(c("tightness"),2)
+          DT::formatRound(c("tightness"),2) |>
+          DT::formatRound(c("n_tail_reads","n_tail","n_tail_ended"),0)
     })
     
     plot_server("survival_plot", \() {
@@ -166,11 +172,13 @@ site_examiner_server <- function(tq, input,output,session) {
         print(p)
     })
     
-    output$read_counts <- shiny::renderTable(digits=0, {
+    output$read_counts <- shiny::renderTable(digits=1, {
         df <- selected_kms()
         df$tail_counts <- purrr::map(df$tail_counts, dplyr::collect)
         dplyr::tibble(
             name=df$name,
+            n_tail_reads=purrr::map_dbl(df$tail_counts,\(item) 
+                if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA),
             n_tail=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_event)),
             n_tail_ended=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_died)),
             tail90=purrr::map_dbl(df$km,km_quantile,0.9),
