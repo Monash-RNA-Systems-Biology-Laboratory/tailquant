@@ -45,7 +45,7 @@ future::plan(future::multisession, workers=8)
 # ...
 
 ingest_read_pairs(
-    "reads.parquet",   # <- This fill will be created
+    "reads.parquet",   # <- This file will be created
     "reads1.fastq.gz",
     "reads2.fastq.gz",
     samples=samples)
