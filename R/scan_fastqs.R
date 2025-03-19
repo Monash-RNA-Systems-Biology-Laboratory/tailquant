@@ -30,7 +30,8 @@ scan_paired_chunks <- function(
         if (length(i) != 1) NA else i
     })
     sample <- samples$sample[sample_index]
-    barcode_mismatches <- purrr::imap_dbl(sample_index, \(index,i) dists[i,index])
+    barcode_mismatches <- purrr::imap_dbl(sample_index, \(index,i) 
+        if (is.na(index)) NA else dists[i,index])
     
     # Identify poly(A) and poly(T) sequence
     suffix <- paste0(barcode,umi) |>
