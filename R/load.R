@@ -39,8 +39,8 @@ load_tt_sites <- function(path, reference_gff=NULL, reference_fasta=NULL) {
         dplyr::as_tibble() |>
         dplyr::transmute(
             site=id, 
-            location=paste0(seqnames,":",start), 
-            chr=as.character(seqnames), 
+            location=paste0(seqnames,":",start," ",strand), 
+            chr=as.character(seqnames),
             pos=as.integer(start), 
             strand=strand_to_int(strand), 
             relation=Relation, 
@@ -175,6 +175,8 @@ load_tt_sample <- function(path, tail_source, read_pairs_file=NULL, limit=NA) {
 #' Ingest Tail Tools output
 #'
 #' @param tail_source Should be one of "tt", "read1", or "read2". If "tt", Tail Tools tail lengths are used. If "read1", poly(A) tail lengths from read 1 are used. If "read2", poly(T) tail lengths from read 2 are used. If using "read1" or "read2", read_pairs_file must be given.
+#'
+#' @param read_pairs_file Parquet file or parquet files produced by ingest_read_pairs().
 #'
 #' @export
 ingest_tt <- function(

@@ -1,6 +1,9 @@
 
-site_examiner_ui <- function(tq, title) {
+site_examiner_ui <- function(tq, title, max_tail=NA) {
     max_tail_upper <- get_attr(tq$sites, "max_tail")
+    if (is.na(max_tail)) {
+        max_tail <- max_tail_upper
+    }
     
     ui <- shiny::fluidPage(
         shiny::titlePanel(title),
@@ -8,7 +11,7 @@ site_examiner_ui <- function(tq, title) {
             shiny::sidebarPanel(
                 shiny::numericInput("top_n", "List this many top sites by n_tail_ended (0=all)", value=0, min=0, step=1),
                 shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
-                shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail_upper, min=1, max=max_tail_upper, step=1),
+                shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail, min=1, max=max_tail_upper, step=1),
                 shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
                 shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
                 shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length.")
@@ -190,9 +193,9 @@ site_examiner_server <- function(tq, input,output,session) {
 
 
 #' @export
-shiny_site_examiner <- function(tq, title="Tail distribution examiner") {
+shiny_site_examiner <- function(tq, title="Tail distribution examiner", max_tail=NA) {
     shiny::shinyApp(
-        site_examiner_ui(tq, title)
+        site_examiner_ui(tq, title=title, max_tail=max_tail)
         ,\(...) site_examiner_server(tq, ...)
     )
 }

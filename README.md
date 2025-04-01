@@ -44,10 +44,14 @@ future::plan(future::multisession, workers=8)
 #     barcode - barcode sequence (as seen in read 2)
 # ...
 
+# Have a look at your FASTQ file to check an appropriate quality cutoff.
+# Ends of reads will be clipped at the point 1 in 5 non-G bases start falling below this quality.
+
 ingest_read_pairs(
     "reads.parquet",   # <- This file will be created
     "reads1.fastq.gz",
     "reads2.fastq.gz",
+    clip_quality_char="I", # <- Check this is appropriate
     samples=samples)
 
 demux_reads(
