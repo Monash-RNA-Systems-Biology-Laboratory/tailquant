@@ -240,13 +240,14 @@ site_examiner_server <- function(tq, input,output,session) {
         df$tail_counts <- purrr::map(df$tail_counts, dplyr::collect)
         
         # Awkward
-        counts <- purrr::map(selected_samples()$counts,\(item)
-            filter(item, site == .env$selected()$site) |> collect())
-        n <- purrr::map_dbl(counts, \(item) sum(item$n))
-        n_reads <- purrr::map_dbl(counts, \(item) sum(item$n_read))
-        if (!input$show_samples) {
-            n <- sum(n)
-            n_reads <- sum(n_reads)
+        if (input$show_samples) {
+            counts <- purrr::map(selected_samples()$counts,\(item)
+                dplyr::filter(item, site == .env$selected()$site) |> dplyr::collect())
+            n <- purrr::map_dbl(counts, \(item) sum(item$n))
+            n_reads <- purrr::map_dbl(counts, \(item) sum(item$n_read))
+        }else {
+            n <- NULL
+            n_reads <- NULL
         }
         
         dplyr::tibble(
