@@ -73,6 +73,25 @@ plot_km_density <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1
 
 
 #' @export
+plot_km_density_ridgeline <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1) {
+    kms <- ensure_list(kms) |>
+        purrr::map(km_complete, min_tail=min_tail, max_tail=max_tail)
+    
+    df <- dplyr::tibble(name=forcats::fct_inorder(.env$names), km=.env$kms) |>
+        tidyr::unnest("km") |>
+        dplyr::mutate(tail = (floor((tail-min_tail)/step)+0.5)*step+min_tail) |>
+        dplyr::summarize(prop_died=sum(prop_died), .by=c(name,tail))
+    
+    ggplot2::ggplot(df) + 
+        ggplot2::aes(x=tail,y=forcats::fct_rev(name),height=prop_died) + 
+        ggridges::geom_ridgeline(scale=1.5/max(df$prop_died), alpha=0.5) +
+        ggplot2::coord_cartesian(ylim=c(1,length(names) + 1.5)) +
+        ggplot2::labs(x="Tail length", y="Proportion") +
+        theme()
+}
+
+
+#' @export
 plot_km_density_heatmap <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1, normalize_max=TRUE) {
     kms <- ensure_list(kms)
     

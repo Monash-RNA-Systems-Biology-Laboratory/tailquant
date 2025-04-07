@@ -4,10 +4,12 @@
 \alias{site_reads}
 \title{Join reads to sites}
 \usage{
-site_reads(reads, sites, site_pad)
+site_reads(reads, sites, site_pad, site_upstrand)
 }
 \arguments{
-\item{site_pad}{Reads ending within \link{position-site_pad, position+site_pad} will be counted to a site.}
+\item{site_pad}{Reads ending within \link{position-site_pad, position+site_pad} will be counted to a site and used for tail estimation.}
+
+\item{site_upstrand}{Reads ending at most this far upstrand will also be included in UMI counts.}
 }
 \description{
 If a read is near multiple sites, the nearest is chosen.

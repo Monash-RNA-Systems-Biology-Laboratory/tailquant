@@ -47,7 +47,7 @@ load_tt_sites <- function(path, reference_gff=NULL, reference_fasta=NULL) {
             gene_id=Parent, 
             name=Name, 
             biotype=Biotype, 
-            product=Product)  
+            product=Product)
     
     # Discard antisense relations
     is_antisense <- (sites$relation == "Antisense") |> tidyr::replace_na(FALSE)
@@ -184,10 +184,11 @@ ingest_tt <- function(
         tail_source,
         read_pairs_file=NULL,
         site_pad=10,
+        site_upstrand=300,
         min_tail=19,
         length_trim=10,
         limit=NA, # Max alignments to read per BAM file
-        steps=1:6) {
+        steps=1:7) {
     
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
     
@@ -228,7 +229,7 @@ ingest_tt <- function(
         purrr::walk(sample_names, .progress=TRUE, \(sample) {
             #message("Siting ", sample)
             load_parquet(out_dir,"reads",sample,".reads.parquet") |>
-                site_reads(sites, site_pad=site_pad) |>
+                site_reads(sites, site_pad=site_pad, site_upstrand=site_upstrand) |>
                 save_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet")
             NULL
         })
@@ -249,7 +250,17 @@ ingest_tt <- function(
     }
     
     if (6 %in% steps) {
-        message("Step 6: stats")
+        message("Step 6: counts")
+        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+            load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
+                count_umis() |>
+                save_parquet(out_dir,"counts",sample,".counts.parquet")
+            NULL
+        })
+    }
+    
+    if (7 %in% steps) {
+        message("Step 7: stats")
         tq <- load_tq(out_dir)
         calc_site_stats(tq) |>
             save_parquet(out_dir,".","sites.parquet")
@@ -285,6 +296,10 @@ load_tq <- function(in_dir) {
     
     samples$tail_counts <- purrr::map(samples$sample, \(sample) {
         load_parquet(in_dir,"tail_counts",sample,".tail_counts.parquet")
+    })
+    
+    samples$counts <- purrr::map(samples$sample, \(sample) {
+        load_parquet(in_dir,"counts",sample,".counts.parquet")
     })
     
     list(sites=sites, samples=samples)

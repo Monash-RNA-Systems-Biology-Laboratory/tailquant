@@ -44,16 +44,20 @@ km_complete <- function(km, min_tail=0, max_tail=NULL) {
 #'
 #' If a read is near multiple sites, the nearest is chosen.
 #'
-#' @param site_pad Reads ending within [position-site_pad, position+site_pad] will be counted to a site.
+#' @param site_pad Reads ending within [position-site_pad, position+site_pad] will be counted to a site and used for tail estimation.
+#'
+#' @param site_upstrand Reads ending at most this far upstrand will also be included in UMI counts.
 #'
 #' @export
-site_reads <- function(reads, sites, site_pad) {
+site_reads <- function(reads, sites, site_pad, site_upstrand) {
     sites <- dplyr::collect(sites)
     reads <- dplyr::collect(reads)
     
     # Associate reads with sites
+    left <- ifelse(sites$strand < 0,  site_pad,      site_upstrand)
+    right <- ifelse(sites$strand < 0, site_upstrand, site_pad)
     hits <- tailquant:::find_overlaps(
-        sites$chr, sites$pos-site_pad, sites$pos+site_pad, sites$strand,
+        sites$chr, sites$pos-left, sites$pos+right, sites$strand,
         reads$chr, reads$pos, reads$pos, reads$strand)
     
     # If multiple hits, choose nearest to actual pos
@@ -63,8 +67,11 @@ site_reads <- function(reads, sites, site_pad) {
     #So:
     hits <- dplyr::summarize(hits, index1=index1[which.min(offset)], .by=c(index2))
     
+    hits$close_to_site <- abs(reads$pos[hits$index2] - sites$pos[hits$index1]) <= site_pad
+    
     dplyr::tibble(
-            site=sites$site[hits$index1], 
+            site=sites$site[hits$index1],
+            close_to_site=hits$close_to_site,
             reads[hits$index2,]) |>
         arrow::as_arrow_table() |>
         dplyr::arrange(site, tail) |>
@@ -88,7 +95,8 @@ site_reads <- function(reads, sites, site_pad) {
 #' @export
 count_tails <- function(sited_reads, min_tail, length_trim) {
     sited_reads <- sited_reads |>
-        arrow::as_arrow_table()
+        arrow::as_arrow_table() |>
+        dplyr::filter(close_to_site)    # Only count tail if read ends very near actual site
     
     if ("umi" %in% names(sited_reads)) {
         sited_reads <- dplyr::mutate(
@@ -100,7 +108,7 @@ count_tails <- function(sited_reads, min_tail, length_trim) {
             sited_reads, 
             weight = 1)
     }
-        
+    
     cumulation <- sited_reads |>
         dplyr::transmute(
             site = site,
@@ -119,6 +127,41 @@ count_tails <- function(sited_reads, min_tail, length_trim) {
         arrow::as_arrow_table() |>
         set_attr("min_tail", min_tail) |>
         set_attr("length_trim", length_trim)
+    
+    cumulation
+}
+
+
+#' Count UMIs (or reads if UMIs not present)
+#'
+#' Reads are counted even if they don't have a tail. Use for examining site expression levels.
+#'
+#' @export
+count_umis <- function(sited_reads) {
+    sited_reads <- sited_reads |>
+        arrow::as_arrow_table()
+    
+    if ("umi" %in% names(sited_reads)) {
+        sited_reads <- dplyr::mutate(
+            sited_reads,
+            weight = 1 / dplyr::n(),
+            .by = c(site, umi))
+    } else {
+        sited_reads <- dplyr::mutate(
+            sited_reads, 
+            weight = 1)
+    }
+    
+    cumulation <- sited_reads |>
+        dplyr::transmute(
+            site = site,
+            weight = weight) |>
+        dplyr::summarise(
+            n = sum(weight),
+            n_read = dplyr::n(),
+            .by = c(site)) |>
+        dplyr::arrange(site) |>
+        arrow::as_arrow_table()
     
     cumulation
 }

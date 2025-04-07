@@ -17,6 +17,7 @@ Imports:
     tibble,
     stringr,
     ggplot2,
+    ggridges,
     scales,
     patchwork,
     forcats,
