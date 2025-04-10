@@ -135,23 +135,26 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     output$table <- DT::renderDT(server=TRUE, {
+        df_show <- dplyr::select(df(), !product)
         DT::datatable(
-            dplyr::select(df(), !product),
+            df_show,
             selection='single',
             rownames=FALSE, #width="100%", 
             class='compact cell-border hover',
             extensions='Buttons'
         ) |>
           DT::formatRound(c("tightness"),2) |>
-          DT::formatRound(c("n_tail_reads","n_tail","n_tail_ended"),0)
+          DT::formatRound(c("n_tail_reads","n_tail","n_tail_ended"),0) |>
+          DT::formatStyle(names(df_show), "white-space"="nowrap")
     })
     
     output$site_info <- shiny::renderUI({
+        has_gene <- !is.na(selected()$gene_id)
         shiny::div(
-            shiny::strong("Selected ", selected()$site, " at ", selected()$location),
+            shiny::strong("Selected site ", selected()$site, " at ", selected()$location),
             shiny::br(),
-            paste0(selected()$name, " (", selected()$gene_id, ")"),
-            selected()$product,
+            if (has_gene) paste0(selected()$name, " (", selected()$gene_id, ")"),
+            if (has_gene) selected()$product,
             shiny::br(),
             shiny::br()
         )

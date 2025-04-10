@@ -183,6 +183,7 @@ ingest_tt <- function(
         out_dir, in_dir,
         tail_source,
         read_pairs_file=NULL,
+        site_file=NULL,
         site_pad=10,
         site_upstrand=300,
         min_tail=19,
@@ -207,7 +208,9 @@ ingest_tt <- function(
     
     if (2 %in% steps) {
         message("Step 2: sites")
-        load_tt_sites(in_dir) |>
+        if (is.null(site_file)) 
+            site_file <- in_dir
+        load_tt_sites(site_file) |>
             save_parquet(out_dir,".","sites.parquet")
     }
     
