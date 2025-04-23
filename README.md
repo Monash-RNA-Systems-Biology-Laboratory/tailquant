@@ -7,20 +7,25 @@ Improved quantification of poly(A) tail length from PAT-Seq data using Kaplan-Me
 ## Usage
 
 ```r
-# Install and load tailquant package
+# Package needs to be installed for multiprocessing to work
 library(tailquant)
-# or
-devtools::load_all("tailquant", export_all=FALSE)
+
+# Enable multiprocessing.
+# - Optional! Fragile!
+# - Do not use from within RStudio, except by invoking R in the terminal.
+# - future::multisession may also work, if multicore isn't available, or it may also fail.
+future::plan(future::multicore, workers=8)
 
 # Process an existing Tail Tools pipeline.
 # Creates a new directory called my_output_dir
 ingest_tt(
     out_dir="my_output_dir", 
     in_dir="my_tail_tools_pipeline_dir",
-    site_pad=10,    #(default) Reads alignments ending +/-10 bases of a site are examined
-    min_tail=19,    #(default) Minimum "A"s to consider as having a poly(A) tail
-    length_trim=10  #(default) poly(A) tail reaching within 10 bases of the end 
-                    #          we treat as not having ended.
+    tail_source="tt", # Where to get tail lengths from. "tt" means from Tail Tools output.
+    site_pad=10,      # (default) Reads alignments ending +/-10 bases of a site are examined.
+    min_tail=19,      # (default) Minimum "A"s to consider as having a poly(A) tail.
+    length_trim=10    # (default) poly(A) tail reaching within 10 bases of the end 
+                      #           we treat as not having ended.
 )
 
 # Open Shiny app
@@ -35,8 +40,11 @@ shiny_site_examiner(tq, title="Tail length examiner for this dataset")
 # Package needs to be installed for multiprocessing to work
 library(tailquant)
 
-# Optional! Fragile! Enable multiprocessing.
-future::plan(future::multisession, workers=8)
+# Enable multiprocessing.
+# - Optional! Fragile!
+# - Do not use from within RStudio, except by invoking R in the terminal.
+# - future::multisession may also work, if multicore isn't available, or it may also fail.
+future::plan(future::multicore, workers=6)
 
 # ... 
 # Create a data frame of samples with columns:

@@ -9,6 +9,7 @@ ingest_tt(
   in_dir,
   tail_source,
   read_pairs_file = NULL,
+  site_file = NULL,
   site_pad = 10,
   site_upstrand = 300,
   min_tail = 19,

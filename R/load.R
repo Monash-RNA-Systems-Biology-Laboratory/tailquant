@@ -216,7 +216,7 @@ ingest_tt <- function(
     
     if (3 %in% steps) {
         message("Step 3: reads")
-        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+        parallel_walk(sample_names, \(sample) {
             #message("Ingesting ", sample)
             file.path(in_dir,"samples",sample) |>
                 load_tt_sample(tail_source=tail_source, read_pairs_file=read_pairs_file, limit=limit) |>
@@ -227,24 +227,22 @@ ingest_tt <- function(
     
     if (4 %in% steps) {
         message("Step 4: sited_reads")
-        sites <- load_parquet(out_dir,".","sites.parquet") |> dplyr::collect()
         
-        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+        parallel_walk(sample_names, \(sample) {
             #message("Siting ", sample)
+            sites <- load_parquet(out_dir,".","sites.parquet") |> dplyr::collect()
             load_parquet(out_dir,"reads",sample,".reads.parquet") |>
                 site_reads(sites, site_pad=site_pad, site_upstrand=site_upstrand) |>
                 save_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet")
             NULL
         })
-        
-        rm(sites)
     }
     
     if (5 %in% steps) {
         message("Step 5: tail_counts")
         #for(sample in sample_names) {
-        purrr::walk(sample_names, .progress=TRUE, \(sample) {
-            #message("Counting ", sample)
+        parallel_walk(sample_names, \(sample) {
+            #message("Tail counting ", sample)
             load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
                 count_tails(min_tail=min_tail, length_trim=length_trim) |>
                 save_parquet(out_dir,"tail_counts",sample,".tail_counts.parquet")
@@ -254,7 +252,8 @@ ingest_tt <- function(
     
     if (6 %in% steps) {
         message("Step 6: counts")
-        purrr::walk(sample_names, .progress=TRUE, \(sample) {
+        parallel_walk(sample_names, \(sample) {
+            #message("Counting ", sample)
             load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
                 count_umis() |>
                 save_parquet(out_dir,"counts",sample,".counts.parquet")
@@ -275,7 +274,7 @@ ingest_tt <- function(
 # Backwards compatability
 fix_column_names <- function(pq) {
     if ("genomic_bases" %in% names(pq))
-        pq <- dplyr::rename(tail_start = genomic_bases)
+        pq <- dplyr::rename(pq, tail_start = genomic_bases)
     pq
 }
 

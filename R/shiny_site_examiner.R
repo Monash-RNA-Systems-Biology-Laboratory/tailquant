@@ -74,11 +74,6 @@ site_examiner_server <- function(tq, input,output,session) {
     sites <- tq$sites
     samples <- tq$samples
     
-    if (!"color" %in% colnames(samples)) {
-        samples$color <- scales::hue_pal()(nrow(samples))
-    }
-    
-    
     df <- shiny::reactive({
         result <- sites
         # Backwards compatability
@@ -104,7 +99,13 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     selected_samples <- reactive({
-        dplyr::filter(samples, sample %in% .env$input$which_samples)
+        result <- dplyr::filter(samples, sample %in% .env$input$which_samples)
+        
+        if (!"color" %in% colnames(result)) {
+            result$color <- scales::hue_pal()(nrow(result))
+        }
+        
+        result
     })
     
     selected_kms <- reactive({

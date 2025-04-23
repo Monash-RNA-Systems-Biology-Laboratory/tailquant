@@ -128,6 +128,15 @@ local_queue <- function(workers = future::nbrOfWorkers()) {
     }
 }
 
+#' @export
+parallel_walk <- function(vec, func, workers = future::nbrOfWorkers()) {
+    queue <- local_queue()
+    for(item in vec) {
+        future_result <- future::future(seed=NULL, func(item))
+        queue(future::value, future_result)
+    }
+}
+
 # local({
 #     queue <- local_queue(2)
 #     queue(print, 1)
