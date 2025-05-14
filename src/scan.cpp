@@ -123,7 +123,7 @@ NumericVector scan_suffix(std::string s, char c, std::string suffix, int n, doub
 /*
 In a string, strictly from the specified start, up to the nth character,
 Find the best span containing mostly the c character.
-score = matches - penalty * mixmatches
+score = matches - penalty * mismatches
 Returns 1-based range of the span, and the score.
 */
 // [[Rcpp::export]]

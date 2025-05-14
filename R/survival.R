@@ -92,11 +92,16 @@ site_reads <- function(reads, sites, site_pad, site_upstrand) {
 #'
 #' @param length_trim This many bases are effectively trimmed from the ends of reads.
 #'
+#' @param must_be_close_to_site Are tail lengths only valid if reads ended very close to the site position. This applies to tail lengths from read 1, but not tail lengths from read 2.
+#'
 #' @export
-count_tails <- function(sited_reads, min_tail, length_trim) {
+count_tails <- function(sited_reads, min_tail, length_trim, must_be_close_to_site) {
     sited_reads <- sited_reads |>
-        arrow::as_arrow_table() |>
-        dplyr::filter(close_to_site)    # Only count tail if read ends very near actual site
+        arrow::as_arrow_table()
+        
+    if (must_be_close_to_site)
+        sited_reads <- sited_reads |>
+            dplyr::filter(close_to_site)    # Only count tail if read ends very near actual site
     
     if ("umi" %in% names(sited_reads)) {
         sited_reads <- dplyr::mutate(

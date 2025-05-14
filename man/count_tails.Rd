@@ -4,12 +4,14 @@
 \alias{count_tails}
 \title{Count tail lengths}
 \usage{
-count_tails(sited_reads, min_tail, length_trim)
+count_tails(sited_reads, min_tail, length_trim, must_be_close_to_site)
 }
 \arguments{
 \item{min_tail}{Tail lengths shorter than this are discarded.}
 
 \item{length_trim}{This many bases are effectively trimmed from the ends of reads.}
+
+\item{must_be_close_to_site}{Are tail lengths only valid if reads ended very close to the site position. This applies to tail lengths from read 1, but not tail lengths from read 2.}
 }
 \description{
 Count tail lengths observed at each site, and how many are considered censored.

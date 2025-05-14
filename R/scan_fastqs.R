@@ -150,7 +150,6 @@ ingest_read_pairs <- function(
 demux_reads <- function(out_dir, in_file, sample_names=NULL) {
     assertthat::assert_that(file.exists(in_file), msg="Input file doesn't exist.")
     
-    
     if (is.null(sample_names)) {
         df <- arrow::open_dataset(in_file) |>
             dplyr::distinct(sample) |>

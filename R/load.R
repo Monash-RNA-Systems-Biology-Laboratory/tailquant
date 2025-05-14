@@ -193,6 +193,11 @@ ingest_tt <- function(
     
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
     
+    # We can use more tail lengths if getting them from read 2
+    must_be_close_to_site <- tail_source != "read2"
+    if (!must_be_close_to_site)
+        message("Tail lengths from read 2, more read-pairs provide tail lengths.")
+    
     if (1 %in% steps) {
         message("Step 1: samples")
         meta <- jsonlite::fromJSON(file.path(in_dir, "plotter-config.json"))
@@ -244,7 +249,7 @@ ingest_tt <- function(
         parallel_walk(sample_names, \(sample) {
             #message("Tail counting ", sample)
             load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
-                count_tails(min_tail=min_tail, length_trim=length_trim) |>
+                count_tails(min_tail=min_tail, length_trim=length_trim, must_be_close_to_site=must_be_close_to_site) |>
                 save_parquet(out_dir,"tail_counts",sample,".tail_counts.parquet")
             NULL
         })
