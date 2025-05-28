@@ -1,9 +1,13 @@
 
-# df should have columns: tail, n_event, n_died (n_event includes n_died)
-# If assume_all_died=TRUE, set n_died <- n_event.
+#' Kaplan-Meier curve estimation
+#'
+#' @details
+#' df should have columns tail, n_event, n_died (n_event includes n_died).
+#'
+#' If assume_all_died=TRUE, we set n_died = n_event.
+#'
 #' @export
 calc_km <- function(df, assume_all_died=FALSE) {
-    # Kaplan-Meier calculation
     km <- df |>
         dplyr::arrange(tail) |>
         dplyr::collect() #Can't be arrow
@@ -19,9 +23,41 @@ calc_km <- function(df, assume_all_died=FALSE) {
     km$prop_after <- cumprod(survivors_prop_survived)
     km$prop_before <- dplyr::lag(km$prop_after,1,1)
     km$prop_died <- km$prop_before - km$prop_after
+    
+    # Greenwood's formula for the standard error of prop_after
+    # Ensure zero rather than NaN for zero survival
+    km$se <- sqrt(ifelse(
+        km$prop_after == 0, 0, 
+        km$prop_after * cumsum(km$n_died / (km$active_n*(km$active_n-km$n_died)))))
+    
+    # In the case of no censoring this matches the binomial variance estimate:
+    #   p[i]*(1-p[i])/r[1]
+    #
+    # Let
+    #   r[i] = active at timestep i
+    #   d[i] = died at timestep i
+    #
+    # p[i] = r[i+1] / r[1]
+    # 
+    # With no censoring, d[i] = r[i]-r[i+1]
+    #
+    # The summation part is:
+    #
+    # sum( d[i]/(r[i]*r[i+1]) )
+    # = sum( (r[i]-r[i+1]) / (r[i]*r[i+1]) )
+    # = sum( 1/r[i+1] - 1/r[i] )
+    # = 1/r[i+1] - 1/r[1]
+    # = (r[1]/r[i+1)) * (1/r[1]) * (1 - r[i+1]/r[1])
+    # = 1/p[i] * 1/r[1] * (1-p[i])
+    #
+    # So the final variance is
+    #   p[i]*p[i]*sum = p[i] * (1-p[i]) / r[1]
+    
     km
 }
 
+#' Quantile from a Kaplan-Meier curve
+#'
 #' @export
 km_quantile <- function(km, prop) {
     # Average if we exactly hit a proportion
@@ -29,6 +65,30 @@ km_quantile <- function(km, prop) {
     tail2 <- km$tail[ match(TRUE, km$prop_after < prop) ]
     (tail1 + tail2) / 2
 }
+
+#' Quantile on some number of standard errors from the Kaplan-Meier curve
+#'
+#' @export
+km_quantile_bound <- function(km, prop, z) {
+    km$prop_after <- km$prop_after + z * km$se
+    km_quantile(km, prop)
+}
+
+#' Survival proportion and standard error for a specific tail length
+#'
+#' @export
+km_at <- function(km, tail) {
+    idx <- match(TRUE, km$tail >= tail)-1
+    if (is.na(idx))
+        idx <- nrow(km)
+    
+    if (idx == 0)
+        tibble(prop=1,se=0)
+    else
+        tibble(prop=km$prop_after[idx],se=km$se[idx])
+}
+
+
 
 km_complete <- function(km, min_tail=0, max_tail=NULL) {
     if (is.null(max_tail)) 
@@ -42,6 +102,7 @@ km_complete <- function(km, min_tail=0, max_tail=NULL) {
 
 #' Join reads to sites
 #'
+#' @description
 #' If a read is near multiple sites, the nearest is chosen.
 #'
 #' @param site_pad Reads ending within [position-site_pad, position+site_pad] will be counted to a site and used for tail estimation.
@@ -129,9 +190,7 @@ count_tails <- function(sited_reads, min_tail, length_trim, must_be_close_to_sit
             n_read_died = sum(died),
             .by = c(site, tail)) |>
         dplyr::arrange(site, tail) |>
-        arrow::as_arrow_table() |>
-        set_attr("min_tail", min_tail) |>
-        set_attr("length_trim", length_trim)
+        arrow::as_arrow_table()
     
     cumulation
 }
@@ -176,7 +235,7 @@ count_umis <- function(sited_reads) {
 combine_tail_counts <- function(tail_counts_list) {
     tail_counts_list <- ensure_list(tail_counts_list)
     
-    result <- tail_counts_list |>
+    tail_counts_list |>
         purrr::map(dplyr::collect) |>
         dplyr::bind_rows() |>
         dplyr::summarise(
@@ -185,19 +244,13 @@ combine_tail_counts <- function(tail_counts_list) {
             n_read_event=sum(n_read_event),
             n_read_died=sum(n_read_died),
             .by=c(site, tail))
-    
-    # TODO: check consistency
-    result |>
-        set_attr("min_tail", get_attr(tail_counts_list[[1]], "min_tail")) |>
-        set_attr("length_trim", get_attr(tail_counts_list[[1]], "length_trim")) |>
-        set_attr("max_tail", max(0, result$tail))
 }
 
 
 #' @export
 calc_site_stats <- function(tq) {
-    sites <- tq$sites
-    tail_counts <- combine_tail_counts(tq$samples$tail_counts)
+    sites <- tq@sites
+    tail_counts <- combine_tail_counts(tq@samples$tail_counts)
     
     result <- tail_counts |>
         tidyr::nest(.by=site, .key="tail_counts") |>
@@ -223,10 +276,7 @@ calc_site_stats <- function(tq) {
                 n_died=tidyr::replace_na(n_died,0))
     }
     
-    result |>
-        set_attr("min_tail", get_attr(tail_counts, "min_tail")) |>
-        set_attr("length_trim", get_attr(tail_counts, "length_trim")) |>
-        set_attr("max_tail", get_attr(tail_counts, "max_tail"))
+    result
 }
 
 

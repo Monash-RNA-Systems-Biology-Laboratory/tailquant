@@ -193,6 +193,8 @@ ingest_tt <- function(
     
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
     
+    dir.create(out_dir, showWarnings=FALSE)
+    
     # We can use more tail lengths if getting them from read 2
     must_be_close_to_site <- tail_source != "read2"
     if (!must_be_close_to_site)
@@ -273,6 +275,13 @@ ingest_tt <- function(
             save_parquet(out_dir,".","sites.parquet")
         rm(tq)
     }
+    
+    # Delete any cached files, as they may be out of date
+    cache_dir <- file.path(out_dir, "cache")
+    cached_files <- list.files(cache_dir, full.names=TRUE)
+    for(filename in cached_files) {
+        unlink(filename)
+    }
 }
 
 
@@ -309,6 +318,6 @@ load_tq <- function(in_dir) {
         load_parquet(in_dir,"counts",sample,".counts.parquet")
     })
     
-    list(sites=sites, samples=samples)
+    new("TailQuant", dir=in_dir, sites=sites, samples=samples)
 }
 

@@ -1,6 +1,6 @@
 
 site_examiner_ui <- function(tq, title, max_tail=NA) {
-    max_tail_upper <- get_attr(tq$sites, "max_tail")
+    max_tail_upper <- tq_tail_range(tq)[2]
     if (is.na(max_tail)) {
         max_tail <- max_tail_upper
     }
@@ -13,16 +13,17 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
             shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
             shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail, min=1, max=max_tail_upper, step=1),
             shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
+            shiny::checkboxInput("cpm", "Density plots show expression level.", value=TRUE),
             shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
-            shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length.")
+            shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length."),
         )
     )
     
     samples_panel <- shiny::tabPanel("Sample selection",
         shiny::p(),
         shiny::checkboxGroupInput("which_samples", "Samples to show", 
-            choices=tq$samples$sample,
-            selected=tq$samples$sample),
+            choices=tq@samples$sample,
+            selected=tq@samples$sample),
         shiny::p("Note: This sample selection does not affect aggregated tail length statistics, just plots showing individual samples.")
     )
     
@@ -39,7 +40,8 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
         shiny::p("n_tail = Number of UMIs with a poly(A) tail."),
         shiny::p("n_tail_ended = Number of UMIs with a poly(A) tail that ended before the end of the read."),
         shiny::p("tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length."),
-        shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first.")
+        shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first."),
+        shiny::p("cpm = Counts Per Million, calculated from n.")
     )
     
     ui <- shiny::fluidPage(
@@ -47,8 +49,8 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
         shiny::wellPanel(
             shiny::tabsetPanel(
                 table_panel,
-                samples_panel,
                 options_panel,
+                samples_panel,
                 explanation_panel
             ),
         ),
@@ -71,8 +73,14 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
 }
 
 site_examiner_server <- function(tq, input,output,session) {
-    sites <- tq$sites
-    samples <- tq$samples
+    sites <- tq@sites
+    samples <- tq@samples
+    
+    min_tail <- tq_tail_range(tq)[1]
+    
+    # Possibly this should be done in tq_load
+    lib_sizes <- tq_lib_sizes(tq)
+    samples <- dplyr::left_join(samples, lib_sizes, by="sample")
     
     df <- shiny::reactive({
         result <- sites
@@ -150,20 +158,28 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     output$site_info <- shiny::renderUI({
-        has_gene <- !is.na(selected()$gene_id)
-        shiny::div(
-            shiny::strong("Selected site ", selected()$site, " at ", selected()$location),
-            shiny::br(),
-            if (has_gene) paste0(selected()$name, " (", selected()$gene_id, ")"),
-            if (has_gene) selected()$product,
-            shiny::br(),
-            shiny::br()
-        )
+        if (length(input$table_rows_selected) != 1) {
+            shiny::div(
+                "Use the \"Site selection\" tab to select a site to examine.", 
+                shiny::br(), 
+                shiny::br()
+            )
+        } else {
+            has_gene <- !is.na(selected()$gene_id)
+            shiny::div(
+                shiny::strong("Selected site ", selected()$site, " at ", selected()$location),
+                shiny::br(),
+                if (has_gene) paste0(selected()$name, " (", selected()$gene_id, ")"),
+                if (has_gene) selected()$product,
+                shiny::br(),
+                shiny::br()
+            )
+        }
     })
     
     plot_server("survival_plot", \() {
         p <- plot_km_survival(selected_kms()$km, selected_kms()$name, 
-            min_tail=get_attr(sites, "min_tail", 0),
+            min_tail=min_tail,
             max_tail=input$max_tail)
         if (input$show_samples) 
             p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
@@ -175,9 +191,11 @@ site_examiner_server <- function(tq, input,output,session) {
     
     plot_server("density_plot", \() {
         p <- plot_km_density(selected_kms()$km, selected_kms()$name, 
-            min_tail=get_attr(sites, "min_tail", 0),
+            min_tail=min_tail,
             max_tail=input$max_tail,
-            step=input$step)
+            step=input$step,
+            cpm=input$cpm && input$show_samples,
+            lib_sizes=selected_samples()$lib_size)
         if (input$show_samples) 
             p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
         else
@@ -188,9 +206,11 @@ site_examiner_server <- function(tq, input,output,session) {
     
     plot_server("ridgeline_plot", \() {
         p <- plot_km_density_ridgeline(selected_kms()$km, selected_kms()$name, 
-            min_tail=get_attr(sites, "min_tail", 0),
+            min_tail=min_tail,
             max_tail=input$max_tail,
-            step=input$step)
+            step=input$step,
+            cpm=input$cpm && input$show_samples,
+            lib_sizes=selected_samples()$lib_size)
         #if (input$show_samples) 
         #    p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
         #else
@@ -201,10 +221,12 @@ site_examiner_server <- function(tq, input,output,session) {
     
     plot_server("density_heatmap", \() {
         p <- plot_km_density_heatmap(selected_kms()$km, selected_kms()$name, 
-            min_tail=get_attr(sites, "min_tail", 0),
+            min_tail=min_tail,
             max_tail=input$max_tail,
             step=input$step,
-            normalize_max=FALSE)
+            normalize_max=FALSE,
+            cpm=input$cpm && input$show_samples,
+            lib_sizes=selected_samples()$lib_size)
         print(p)
     })
     
@@ -233,7 +255,7 @@ site_examiner_server <- function(tq, input,output,session) {
         names <- paste(tidyr::replace_na(this_sites$name,""), this_sites$site)
         
         p <- plot_km_density_heatmap(kms, names,
-            min_tail=get_attr(sites, "min_tail", 0),
+            min_tail=min_tail,
             max_tail=input$max_tail,
             step=input$step)
         print(p)
@@ -249,13 +271,17 @@ site_examiner_server <- function(tq, input,output,session) {
                 dplyr::filter(item, site == .env$selected()$site) |> dplyr::collect())
             n <- purrr::map_dbl(counts, \(item) sum(item$n))
             n_reads <- purrr::map_dbl(counts, \(item) sum(item$n_read))
-        }else {
+            
+            cpm <- n * 1e6 / selected_samples()$lib_size
+        } else {
             n <- NULL
             n_reads <- NULL
+            cpm <- NULL
         }
         
         dplyr::tibble(
             name=df$name,
+            cpm=cpm,
             n_reads=n_reads,
             n_tail_reads=purrr::map_dbl(df$tail_counts,\(item) 
                 if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA),

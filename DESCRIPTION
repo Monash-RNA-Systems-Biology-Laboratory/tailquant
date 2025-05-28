@@ -8,6 +8,7 @@ License: LGPL (>= 2.1)
 LinkingTo: 
     Rcpp
 Imports:
+    methods,
     withr,
     future,
     arrow,
@@ -23,8 +24,9 @@ Imports:
     forcats,
     stringr,
     rtracklayer,
-    Biostrings,
+    S4Vectors,
     IRanges,
+    Biostrings,
     GenomicRanges,
     GenomicAlignments,
     Rsamtools,
@@ -32,7 +34,12 @@ Imports:
     DT,
     cli,
     assertthat,
-    Rcpp
+    Rcpp,
+    qs2
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

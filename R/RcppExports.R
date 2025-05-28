@@ -2,18 +2,22 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 quality_clip <- function(seq, qual, c, penalty) {
-    .Call('_tailquant_quality_clip', PACKAGE = 'tailquant', seq, qual, c, penalty)
+    .Call(`_tailquant_quality_clip`, seq, qual, c, penalty)
 }
 
 scan <- function(s, c, n, penalty) {
-    .Call('_tailquant_scan', PACKAGE = 'tailquant', s, c, n, penalty)
+    .Call(`_tailquant_scan`, s, c, n, penalty)
 }
 
 scan_suffix <- function(s, c, suffix, n, penalty, suffix_penalty) {
-    .Call('_tailquant_scan_suffix', PACKAGE = 'tailquant', s, c, suffix, n, penalty, suffix_penalty)
+    .Call(`_tailquant_scan_suffix`, s, c, suffix, n, penalty, suffix_penalty)
 }
 
 scan_from <- function(s, c, start, n, penalty) {
-    .Call('_tailquant_scan_from', PACKAGE = 'tailquant', s, c, start, n, penalty)
+    .Call(`_tailquant_scan_from`, s, c, start, n, penalty)
+}
+
+viterbi <- function(input, symbol_cost, transition_cost, initial_cost, final_cost) {
+    .Call(`_tailquant_viterbi`, input, symbol_cost, transition_cost, initial_cost, final_cost)
 }
 

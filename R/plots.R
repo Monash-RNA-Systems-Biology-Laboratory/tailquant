@@ -53,9 +53,17 @@ plot_km_survival <- function(kms, names="Data", min_tail, max_tail=NULL) {
 }
 
 #' @export
-plot_km_density <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1) {
-    kms <- ensure_list(kms) |>
-        purrr::map(km_complete, min_tail=min_tail, max_tail=max_tail)
+plot_km_density <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1, cpm=FALSE, lib_sizes=NULL) {
+    kms <- ensure_list(kms)
+    
+    unit <- "Proportion"
+    if (cpm) {
+        unit <- "CPM"
+        for(i in seq_along(kms))
+            kms[[i]]$prop_died <- kms[[i]]$prop_died * kms[[i]]$active_n[1] * 1e6 / lib_sizes[i]
+    }
+    
+    kms <- purrr::map(kms, km_complete, min_tail=min_tail, max_tail=max_tail)
     
     df <- dplyr::tibble(name=forcats::fct_inorder(.env$names), km=.env$kms) |>
         tidyr::unnest("km") |>
@@ -67,15 +75,23 @@ plot_km_density <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1
         #geom_path(aes(y=n_event/sum(n_event)), color="#ff0000") +
         ggplot2::geom_path() +
         ggplot2::coord_cartesian(ylim=c(0,max(df$prop_died))) +
-        ggplot2::labs(x="Tail length", y="Proportion", color="") +
+        ggplot2::labs(x="Tail length", y=unit, color="") +
         theme()
 }
 
 
 #' @export
-plot_km_density_ridgeline <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1) {
-    kms <- ensure_list(kms) |>
-        purrr::map(km_complete, min_tail=min_tail, max_tail=max_tail)
+plot_km_density_ridgeline <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1, cpm=FALSE, lib_sizes=NULL) {
+    kms <- ensure_list(kms)
+    
+    unit <- "Proportion"
+    if (cpm) {
+        unit <- "CPM"
+        for(i in seq_along(kms))
+            kms[[i]]$prop_died <- kms[[i]]$prop_died * kms[[i]]$active_n[1] * 1e6 / lib_sizes[i]
+    }
+    
+    kms <- purrr::map(kms, km_complete, min_tail=min_tail, max_tail=max_tail)
     
     df <- dplyr::tibble(name=forcats::fct_inorder(.env$names), km=.env$kms) |>
         tidyr::unnest("km") |>
@@ -86,14 +102,21 @@ plot_km_density_ridgeline <- function(kms, names="Data", min_tail=0, max_tail=NU
         ggplot2::aes(x=tail,y=forcats::fct_rev(name),height=prop_died) + 
         ggridges::geom_ridgeline(scale=1.5/max(df$prop_died), alpha=0.5) +
         ggplot2::coord_cartesian(ylim=c(1,length(names) + 1.5)) +
-        ggplot2::labs(x="Tail length", y="Proportion") +
+        ggplot2::labs(x="Tail length", y=unit) +
         theme()
 }
 
 
 #' @export
-plot_km_density_heatmap <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1, normalize_max=TRUE) {
+plot_km_density_heatmap <- function(kms, names="Data", min_tail=0, max_tail=NULL, step=1, normalize_max=TRUE, cpm=FALSE, lib_sizes=NULL) {
     kms <- ensure_list(kms)
+    
+    unit <- "Proportion"
+    if (cpm && !normalize_max) {
+        unit <- "CPM"
+        for(i in seq_along(kms))
+            kms[[i]]$prop_died <- kms[[i]]$prop_died * kms[[i]]$active_n[1] * 1e6 / lib_sizes[i]
+    }
     
     if (is.null(max_tail))
         max_tail <- purrr::map_dbl(kms, \(km) max(km$tail)) |> max()
@@ -105,9 +128,8 @@ plot_km_density_heatmap <- function(kms, names="Data", min_tail=0, max_tail=NULL
         dplyr::mutate(tail = (floor((tail-min_tail)/step)+0.5)*step+min_tail) |>
         dplyr::summarize(prop_died=sum(prop_died), .by=c(name,tail))
     
-    legend_title <- "Proportion"
     if (normalize_max) {
-        legend_title <- "Proportion\n of maximum"
+        unit <- "Proportion\n of maximum"
         df <- df |>
             dplyr::mutate(prop_died=prop_died / max(prop_died), .by=c(name))
     }
@@ -117,6 +139,6 @@ plot_km_density_heatmap <- function(kms, names="Data", min_tail=0, max_tail=NULL
         ggplot2::geom_tile() +
         ggplot2::scale_fill_viridis_c() +
         ggplot2::coord_cartesian(expand=FALSE) +
-        ggplot2::labs(x="Tail length", y="", fill=legend_title) +
+        ggplot2::labs(x="Tail length", y="", fill=unit) +
         theme()
 }

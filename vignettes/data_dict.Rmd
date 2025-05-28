@@ -1,0 +1,52 @@
+---
+title: "Data Dictionary"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Data Dictionary}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## TailQuant and associated files on disk
+
+Load with `load_tq(directory)` to obtain a TailQuant object.
+
+### @sites
+
+* site = A unique identifier for the site.
+* location = Location in convenient string form.
+* chr = Chromosome name (or contig, patch, etc, depening on assembly).
+* pos = 1-based position of the final templated base in transcripts using this site.
+* strand = 1 or -1. Strand of transcripts using this site.
+* relation = Where the site is within the gene/transcript.
+* gene_id = Unique identifier for gene (eg ENSEMBL ID).
+* name = Name/symbol for the gene.
+* biotype = biotype of the gene.
+* product = Text description of the function of the gene, protein it produces, etc.
+* tail_counts = List of data frames, giving total read and UMI counts vs tail length.
+* various statistics
+
+### @samples
+
+* sample = A unique ID for the sample.
+* reads = data frames
+    * chr, pos, strand, length, tail_start, tail, umi
+* sited_reads = data frames
+    * site, close_to_site, chr, pos, strand, length, tail_start, tail, umi
+* tail_counts = Data frames. Summarized data about tail lengths. Events are UMIs (n_event) or reads (n_read_event).
+    * site, tail, n_event, n_died, n_read_event, n_read_died
+* counts = Data frames. Summarized data about UMIs, including reads without tails.
+    * site, n, n_read
+
+* color = (optional) If present, used in Shiny app for plotting.
+
+### /cache
+
+Cached aggregations/computations from above.

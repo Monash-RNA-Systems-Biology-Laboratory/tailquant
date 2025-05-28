@@ -69,12 +69,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// viterbi
+IntegerVector viterbi(IntegerVector input, NumericMatrix symbol_cost, NumericMatrix transition_cost, NumericVector initial_cost, NumericVector final_cost);
+RcppExport SEXP _tailquant_viterbi(SEXP inputSEXP, SEXP symbol_costSEXP, SEXP transition_costSEXP, SEXP initial_costSEXP, SEXP final_costSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type input(inputSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type symbol_cost(symbol_costSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type transition_cost(transition_costSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type initial_cost(initial_costSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type final_cost(final_costSEXP);
+    rcpp_result_gen = Rcpp::wrap(viterbi(input, symbol_cost, transition_cost, initial_cost, final_cost));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_tailquant_quality_clip", (DL_FUNC) &_tailquant_quality_clip, 4},
     {"_tailquant_scan", (DL_FUNC) &_tailquant_scan, 4},
     {"_tailquant_scan_suffix", (DL_FUNC) &_tailquant_scan_suffix, 6},
     {"_tailquant_scan_from", (DL_FUNC) &_tailquant_scan_from, 5},
+    {"_tailquant_viterbi", (DL_FUNC) &_tailquant_viterbi, 5},
     {NULL, NULL, 0}
 };
 
