@@ -26,7 +26,7 @@ tq_site_ids <- function(tq) {
 
 #' @export
 tq_tail_range <- tq_cached("tail_range.qs2", \(tq) {
-    ranges <- map_dfr(tq@samples$tail_counts, \(tail_counts) {
+    ranges <- purrr::map_dfr(tq@samples$tail_counts, \(tail_counts) {
         tail_counts |>
             dplyr::summarize(min=min(tail), max=max(tail)) |> 
             dplyr::collect()
