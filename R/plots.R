@@ -31,24 +31,35 @@ plot_tail_detail <- function(reads, min_tail=0) {
 }
 
 #' @export
-plot_km_survival <- function(kms, names="Data", min_tail, max_tail=NULL) {
+plot_km_survival <- function(kms, names="Data", min_tail, max_tail=NULL, cpm=FALSE, lib_sizes=NULL) {
     kms <- ensure_list(kms)
     
     if (is.null(max_tail))
          max_tail <- max(purrr::map_dbl(kms, \(item) max(min_tail, item$tail)))
+    
+    unit <- "Reverse cumulative distribution"
+    scale <- rep(1, length(kms))
+    if (cpm) {
+        unit <- "Reverse cumulative CPM"
+        for(i in seq_along(kms)) {
+            scale[i] <- kms[[i]]$active_n[1] * 1e6 / lib_sizes[i]
+            kms[[i]]$prop_before <- kms[[i]]$prop_before * scale[i]
+            kms[[i]]$prop_after  <- kms[[i]]$prop_after  * scale[i]
+        }
+    }
     
     names <- forcats::fct_inorder(names)
     df <- dplyr::tibble(name=.env$names, km=.env$kms) |>
          tidyr::unnest("km") |>
          tidyr::pivot_longer(c(prop_before, prop_after), names_to="what", values_to="prop") |>
          dplyr::select(name, tail, prop)
-    df <- dplyr::bind_rows(dplyr::tibble(name=.env$names, tail=min_tail,prop=1), df)
+    df <- dplyr::bind_rows(dplyr::tibble(name=.env$names, tail=min_tail,prop=scale), df)
     
     ggplot2::ggplot(df) + 
         ggplot2::aes(x=tail,y=prop,color=name,group=name) + 
         ggplot2::geom_path() + 
-        ggplot2::coord_cartesian(xlim=c(min_tail,max_tail), ylim=c(0,1)) +
-        ggplot2::labs(x="Tail length", y="Reverse cumulative distribution", color="") + 
+        ggplot2::coord_cartesian(xlim=c(min_tail,max_tail), ylim=c(0,max(scale))) +
+        ggplot2::labs(x="Tail length", y=unit, color="") + 
         theme()
 }
 
@@ -99,11 +110,13 @@ plot_km_density_ridgeline <- function(kms, names="Data", min_tail=0, max_tail=NU
         dplyr::summarize(prop_died=sum(prop_died), .by=c(name,tail))
     
     ggplot2::ggplot(df) + 
-        ggplot2::aes(x=tail,y=forcats::fct_rev(name),height=prop_died) + 
+        ggplot2::aes(x=tail,y=forcats::fct_rev(name),height=prop_died,fill=name) + 
         ggridges::geom_ridgeline(scale=1.5/max(df$prop_died), alpha=0.5) +
         ggplot2::coord_cartesian(ylim=c(1,length(names) + 1.5)) +
-        ggplot2::labs(x="Tail length", y=unit) +
-        theme()
+        ggplot2::labs(x="Tail length", y=unit, fill="") +
+        ggplot2::guides(fill="none") +
+        theme() +
+        ggplot2::theme(panel.grid.major.y = ggplot2::element_line(size = 0.5))
 }
 
 

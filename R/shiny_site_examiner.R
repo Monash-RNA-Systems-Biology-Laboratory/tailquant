@@ -13,7 +13,7 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
             shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
             shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail, min=1, max=max_tail_upper, step=1),
             shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
-            shiny::checkboxInput("cpm", "Density plots show expression level.", value=TRUE),
+            shiny::checkboxInput("cpm", "Plots show expression level.", value=TRUE),
             shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
             shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length."),
         )
@@ -180,7 +180,9 @@ site_examiner_server <- function(tq, input,output,session) {
     plot_server("survival_plot", \() {
         p <- plot_km_survival(selected_kms()$km, selected_kms()$name, 
             min_tail=min_tail,
-            max_tail=input$max_tail)
+            max_tail=input$max_tail,
+            cpm=input$cpm && input$show_samples,
+            lib_sizes=selected_samples()$lib_size)
         if (input$show_samples) 
             p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
         else
@@ -211,10 +213,10 @@ site_examiner_server <- function(tq, input,output,session) {
             step=input$step,
             cpm=input$cpm && input$show_samples,
             lib_sizes=selected_samples()$lib_size)
-        #if (input$show_samples) 
-        #    p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
-        #else
-        #    p <- p + ggplot2::guides(color="none") + ggplot2::scale_color_discrete(type="black")
+        if (input$show_samples) 
+            p <- p + ggplot2::scale_fill_discrete(type=selected_samples()$color)
+        else
+            p <- p + ggplot2::scale_fill_discrete(type="black")
         
         print(p)
     })
