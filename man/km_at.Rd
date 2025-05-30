@@ -2,10 +2,10 @@
 % Please edit documentation in R/survival.R
 \name{km_at}
 \alias{km_at}
-\title{Survival proportion and standard error for a specific tail length}
+\title{Survival proportion for a specific tail length}
 \usage{
 km_at(km, tail)
 }
 \description{
-Survival proportion and standard error for a specific tail length
+Survival proportion for a specific tail length
 }

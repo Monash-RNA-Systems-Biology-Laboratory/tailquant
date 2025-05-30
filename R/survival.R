@@ -26,9 +26,12 @@ calc_km <- function(df, assume_all_died=FALSE) {
     
     # Greenwood's formula for the standard error of prop_after
     # Ensure zero rather than NaN for zero survival
-    km$se <- sqrt(ifelse(
-        km$prop_after == 0, 0, 
-        km$prop_after * cumsum(km$n_died / (km$active_n*(km$active_n-km$n_died)))))
+    #
+    # Note: This turned out to be not terribly useful, since it is zero for proportions of 0 and 1, so I've removed the calculation for now.
+    #
+    #km$se <- sqrt(ifelse(
+    #    km$prop_after == 0, 0, 
+    #    km$prop_after * cumsum(km$n_died / (km$active_n*(km$active_n-km$n_died)))))
     
     # In the case of no censoring this matches the binomial variance estimate:
     #   p[i]*(1-p[i])/r[1]
@@ -66,26 +69,31 @@ km_quantile <- function(km, prop) {
     (tail1 + tail2) / 2
 }
 
-#' Quantile on some number of standard errors from the Kaplan-Meier curve
-#'
-#' @export
-km_quantile_bound <- function(km, prop, z) {
-    km$prop_after <- km$prop_after + z * km$se
-    km_quantile(km, prop)
-}
+# Quantile on some number of standard errors from the Kaplan-Meier curve
+#
+# @export
+#km_quantile_bound <- function(km, prop, z) {
+#    km$prop_after <- km$prop_after + z * km$se
+#    km_quantile(km, prop)
+#}
 
-#' Survival proportion and standard error for a specific tail length
+#' Survival proportion for a specific tail length
 #'
 #' @export
 km_at <- function(km, tail) {
-    idx <- match(TRUE, km$tail >= tail)-1
+    idx <- match(TRUE, km$tail >= tail) - 1
     if (is.na(idx))
         idx <- nrow(km)
     
     if (idx == 0)
-        tibble(prop=1,se=0)
+        1
     else
-        tibble(prop=km$prop_after[idx],se=km$se[idx])
+        km$prop_after[idx]
+    
+    #if (idx == 0)
+    #    tibble(prop=1,se=0)
+    #else
+    #    tibble(prop=km$prop_after[idx],se=km$se[idx])
 }
 
 

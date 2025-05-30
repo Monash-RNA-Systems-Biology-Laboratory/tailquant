@@ -4,7 +4,7 @@
 \alias{tq_quantiles}
 \title{Get matrix of quantile tail lengths}
 \usage{
-tq_quantiles(tq, prop, z = 1)
+tq_quantiles(tq, prop)
 }
 \description{
 Get matrix of quantile tail lengths

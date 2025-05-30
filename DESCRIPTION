@@ -4,7 +4,7 @@ Version: 0.0.0.9000
 Authors@R: 
     person("Paul", "Harrison", email = "paul.harrison@monash.edu", role = c("aut", "cre"), comment=c(ORCID="0000-0002-3980-268X"))
 Description: Quantify poly(A) tail lengths from PAT-Seq data.
-License: LGPL (>= 2.1)
+License: LGPL-2.1 | file LICENSE
 LinkingTo: 
     Rcpp
 Imports:

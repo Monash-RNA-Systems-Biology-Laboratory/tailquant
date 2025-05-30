@@ -74,7 +74,7 @@ tq_counts_tail <- tq_cached("counts_tail.qs2",\(tq) {
 })
 
 #' @export
-tq_counts_tail_ended <- tq_cached("counts_tail.qs2",\(tq) {
+tq_counts_tail_ended <- tq_cached("counts_tail_ended.qs2",\(tq) {
     tail_count_helper(tq, "n_died")
 })
 
@@ -99,7 +99,7 @@ tq_proportions <- function(tq, tail) {
         prop <- matrix(NA_real_, nrow=length(sites), ncol=nrow(tq@samples))
         rownames(prop) <- sites
         colnames(prop) <- tq@samples$sample
-        se <- prop
+        #se <- prop
         
         for(i in seq_len(ncol(prop))) {
             tail_counts <- tq@samples$tail_counts[[i]] |>
@@ -109,13 +109,15 @@ tq_proportions <- function(tq, tail) {
             idx <- match(tail_counts$site, sites)
             for(j in seq_along(idx)) {
                 km <- calc_km(tail_counts$tail_counts[[j]])
-                result <- km_at(km, tail)
-                prop[ idx[j], i ] <- result$prop
-                se[ idx[j], i ] <- result$se
+                prop[ idx[j], i ] <- km_at(km, tail)
+                #result <- km_at(km, tail)
+                #prop[ idx[j], i ] <- result$prop
+                #se[ idx[j], i ] <- result$se
             }
         }
         
-        list(prop=prop, se=se)
+        #list(prop=prop, se=se)
+        prop
     })
 }
 
@@ -124,15 +126,15 @@ tq_proportions <- function(tq, tail) {
 #' @export
 #
 # This could be made much faster!
-tq_quantiles <- function(tq, prop, z=1) {
-    name <- paste0("quantiles_",prop,"_",z,".qs2")
+tq_quantiles <- function(tq, prop) {
+    name <- paste0("quantiles_",prop,".qs2")
     tq_get_cache(tq, name, \(tq) {
         sites <- tq_site_ids(tq)
         tail <- matrix(NA_real_, nrow=length(sites), ncol=nrow(tq@samples))
         rownames(tail) <- sites
         colnames(tail) <- tq@samples$sample
-        low <- tail
-        high <- tail
+        #low <- tail
+        #high <- tail
         
         for(i in seq_len(ncol(tail))) {
             tail_counts <- tq@samples$tail_counts[[i]] |>
@@ -143,11 +145,12 @@ tq_quantiles <- function(tq, prop, z=1) {
             for(j in seq_along(idx)) {
                 km <- calc_km(tail_counts$tail_counts[[j]])
                 tail[ idx[j], i ] <- km_quantile(km, prop)
-                low [ idx[j], i ] <- km_quantile_bound(km, prop, -z)
-                high[ idx[j], i ] <- km_quantile_bound(km, prop, z)
+                #low [ idx[j], i ] <- km_quantile_bound(km, prop, -z)
+                #high[ idx[j], i ] <- km_quantile_bound(km, prop, z)
             }
         }
         
-        list(tail=tail, low=low, high=high)
+        #list(tail=tail, low=low, high=high)
+        tail
     })
 }
