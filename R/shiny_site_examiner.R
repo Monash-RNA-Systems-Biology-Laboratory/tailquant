@@ -99,8 +99,12 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     selected <- reactive({
-        req(length(input$table_rows_selected) == 1)
-        site <- df()$site[ input$table_rows_selected ]
+        req(input$table_rows_all)
+        row <- input$table_rows_all[1]
+        if (length(input$table_rows_selected) == 1 &&
+            input$table_rows_selected %in% input$table_rows_all)
+            row <- input$table_rows_selected
+        site <- df()$site[row]
         sites |>
             dplyr::filter(site == .env$site) |>
             dplyr::collect()
@@ -158,23 +162,15 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     output$site_info <- shiny::renderUI({
-        if (length(input$table_rows_selected) != 1) {
-            shiny::div(
-                "Use the \"Site selection\" tab to select a site to examine.", 
-                shiny::br(), 
-                shiny::br()
-            )
-        } else {
-            has_gene <- !is.na(selected()$gene_id)
-            shiny::div(
-                shiny::strong("Selected site ", selected()$site, " at ", selected()$location),
-                shiny::br(),
-                if (has_gene) paste0(selected()$name, " (", selected()$gene_id, ")"),
-                if (has_gene) selected()$product,
-                shiny::br(),
-                shiny::br()
-            )
-        }
+        has_gene <- !is.na(selected()$gene_id)
+        shiny::div(
+            shiny::strong("Selected site ", selected()$site, " at ", selected()$location),
+            shiny::br(),
+            if (has_gene) paste0(selected()$name, " (", selected()$gene_id, ")"),
+            if (has_gene) selected()$product,
+            shiny::br(),
+            shiny::br()
+        )
     })
     
     plot_server("survival_plot", \() {

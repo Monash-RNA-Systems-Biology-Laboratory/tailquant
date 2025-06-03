@@ -51,14 +51,15 @@ tq_counts <- tq_cached("counts.qs2",\(tq) {
 })
 
 
-tail_count_helper <- function(tq, what) {
+tail_count_helper <- function(tq, what, tail_min=-Inf, tail_max=Inf) {
     sites <- tq_site_ids(tq)
     result <- matrix(0, nrow=length(sites), ncol=nrow(tq@samples))
     rownames(result) <- sites
     colnames(result) <- tq@samples$sample
     
     for(i in seq_len(ncol(result))) {
-        df <- tq@samples$tail_counts[[i]] |> 
+        df <- tq@samples$tail_counts[[i]] |>
+            dplyr::filter(tail >= tail_min, tail <= tail_max) |>
             dplyr::select(site, n=dplyr::all_of(what)) |>
             dplyr::summarize(n=sum(n), .by=site) |> 
             dplyr::collect()
@@ -78,6 +79,13 @@ tq_counts_tail_ended <- tq_cached("counts_tail_ended.qs2",\(tq) {
     tail_count_helper(tq, "n_died")
 })
 
+#' @export
+tq_counts_tail_ended_in_range <- function(tq, tail_min=0, tail_max=Inf) {
+    name <- paste0("counts_tail_ended_in_",tail_min,"_",tail_max,".qs2")
+    tq_get_cache(tq, name, \(tq) {
+        tail_count_helper(tq, "n_died", tail_min, tail_max)
+    })
+}
 
 #' @export
 tq_lib_sizes <- tq_cached("lib_sizes.qs2",\(tq) {
