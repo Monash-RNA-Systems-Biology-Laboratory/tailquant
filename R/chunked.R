@@ -74,20 +74,17 @@ scan_query <- function(query, callback) {
 }
 
 
-#' Map GAlignments chunks
+#' Scan GAlignments chunks
 #'
 #' Note: If limit is larger than chunk size, it is rounded up to a multiple of chunk size.
 #'
-#' TODO: Also provide a scan_ version.
-#'
 #' @export
-map_bam_chunks <- function(filename, param, callback, limit=NA, chunk=5e6) {
+scan_bam_chunks <- function(filename, param, callback, limit=NA, chunk=1e6) {
     if (is.na(limit))
         limit <- Inf
     chunk <- min(chunk, limit)
     
     result <- list()
-    i <- 1
     total <- 0
     
     f <- Rsamtools::BamFile(filename, yieldSize=chunk)
@@ -97,12 +94,26 @@ map_bam_chunks <- function(filename, param, callback, limit=NA, chunk=5e6) {
     while(total < limit) {
         #TODO: Allow callback to garbage collect alignments
         alignments <- GenomicAlignments::readGAlignments(f, param=param)
-        result[[i]] <- callback(alignments)
-        i <- i + 1
+        callback(alignments)
         total <- total + length(alignments)
         if (length(alignments) == 0) break
         rm(alignments)
     }
+}
+
+#' @export
+map_bam_chunks <- function(filename, param, callback, limit=NA, chunk=1e6) {
+    if (is.na(limit))
+        limit <- Inf
+    chunk <- min(chunk, limit)
+    
+    result <- list()
+    
+    callback2 <- function(alignments) {
+        result[[ length(result)+1 ]] <<- callback(alignments)
+    }
+    
+    scan_bam_chunks(filename, param, callback2, limit, chunk)
     
     result
 }

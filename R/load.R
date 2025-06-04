@@ -126,14 +126,25 @@ load_read1_clips <- function(read_names, read_pairs_file) {
 #' Load data from a Tail Tools sample directory. Information about genomic length and tail length is included. Multimappers are discarded. Only the 3' end position is kept.
 #'
 #' @export
-load_tt_sample <- function(path, tail_source, read_pairs_file=NULL, limit=NA) {
+load_tt_sample_into <- function(dest_filename, path, tail_source, read_pairs_file=NULL, limit=NA) {
     bam_filename <- file.path(path, "alignments_filtered_sorted.bam")
     
     param <- Rsamtools::ScanBamParam(what=c("qname"), tag=c("NH"))
     #bam_file <- Rsamtools::BamFile(bam_filename, yieldSize=limit)
     #alignments <- GenomicAlignments::readGAlignments(bam_file, param=param) |>
     
-    alignments <- map_bam_chunks(
+    yield <- local_write_parquet(dest_filename)
+    yield(dplyr::tibble(
+        chr=character(0),
+        pos=integer(0),
+        strand=integer(0),
+        length=numeric(0),
+        tail_start=numeric(0),
+        tail=numeric(0),
+        umi=character(0)
+    ))
+    
+    scan_bam_chunks(
         bam_filename, 
         param=param, 
         limit=limit, 
@@ -164,13 +175,14 @@ load_tt_sample <- function(path, tail_source, read_pairs_file=NULL, limit=NA) {
                 dplyr::inner_join(clips, by="read") |>
                 dplyr::select(!read)
             
-            alignments
+            yield(alignments)
     })
     
-    alignments |>
-        dplyr::bind_rows() |>
-        dplyr::arrange(chr,strand,pos) #Improves compressability
+    #alignments |>
+    #    dplyr::bind_rows() |>
+    #    dplyr::arrange(chr,strand,pos) #Improves compressability
 }
+
 
 #' Ingest Tail Tools output
 #'
@@ -223,11 +235,16 @@ ingest_tt <- function(
     
     if (3 %in% steps) {
         message("Step 3: reads")
+        dir.create(file.path(out_dir, "reads"), showWarnings=FALSE)
         parallel_walk(sample_names, \(sample) {
             #message("Ingesting ", sample)
-            file.path(in_dir,"samples",sample) |>
-                load_tt_sample(tail_source=tail_source, read_pairs_file=read_pairs_file, limit=limit) |>
-                save_parquet(out_dir,"reads",sample,".reads.parquet")
+            #file.path(in_dir,"samples",sample) |>
+            #    load_tt_sample(tail_source=tail_source, read_pairs_file=read_pairs_file, limit=limit) |>
+            #    save_parquet(out_dir,"reads",sample,".reads.parquet")
+            load_tt_sample_into(
+                file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
+                file.path(in_dir,"samples",sample),
+                tail_source=tail_source, read_pairs_file=read_pairs_file, limit=limit)
             NULL
         })
     }
