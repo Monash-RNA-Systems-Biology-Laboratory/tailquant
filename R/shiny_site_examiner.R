@@ -1,4 +1,7 @@
 
+
+
+
 site_examiner_ui <- function(tq, title, max_tail=NA) {
     max_tail_upper <- tq_tail_range(tq)[2]
     if (is.na(max_tail)) {
@@ -63,7 +66,8 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
             shiny::tabPanel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
             shiny::tabPanel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
             shiny::tabPanel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            shiny::tabPanel("Site table", shiny::tableOutput("read_counts"))
+            #shiny::tabPanel("Site table", shiny::tableOutput("read_counts"))
+            shiny::tabPanel("Site table", DT::DTOutput("read_counts"))
         ),
         
         shiny::div(style="height: 800px;")
@@ -99,10 +103,10 @@ site_examiner_server <- function(tq, input,output,session) {
     })
     
     selected <- reactive({
-        req(input$table_rows_all)
-        row <- input$table_rows_all[1]
+        req(input$table_rows_current)
+        row <- input$table_rows_current[1]
         if (length(input$table_rows_selected) == 1 &&
-            input$table_rows_selected %in% input$table_rows_all)
+            input$table_rows_selected %in% input$table_rows_current)
             row <- input$table_rows_selected
         site <- df()$site[row]
         sites |>
@@ -259,7 +263,7 @@ site_examiner_server <- function(tq, input,output,session) {
         print(p)
     })
     
-    output$read_counts <- shiny::renderTable(digits=1, {
+    output$read_counts <- DT::renderDT({
         df <- selected_kms()
         df$tail_counts <- purrr::map(df$tail_counts, dplyr::collect)
         
@@ -277,19 +281,35 @@ site_examiner_server <- function(tq, input,output,session) {
             cpm <- NULL
         }
         
-        dplyr::tibble(
+        result <- dplyr::tibble(
             name=df$name,
+            tail90=purrr::map_dbl(df$km,km_quantile,0.9),
+            tail50=purrr::map_dbl(df$km,km_quantile,0.5),
+            tail10=purrr::map_dbl(df$km,km_quantile,0.1),
             cpm=cpm,
-            n_reads=n_reads,
-            n_tail_reads=purrr::map_dbl(df$tail_counts,\(item) 
-                if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA),
             n=n,
             n_tail=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_event)),
             n_tail_ended=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_died)),
-            tail90=purrr::map_dbl(df$km,km_quantile,0.9),
-            tail50=purrr::map_dbl(df$km,km_quantile,0.5),
-            tail10=purrr::map_dbl(df$km,km_quantile,0.1)
-        )
+            n_reads=n_reads,
+            n_tail_reads=purrr::map_dbl(df$tail_counts,\(item) 
+                if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA))
+        
+        DT::datatable(
+            result,
+            rownames=FALSE,
+            options=list(pageLength=100)) |>
+            DT::formatRound(c("cpm","n","n_tail","n_tail_ended","tail90","tail50","tail10"),1) |>
+            DT::formatRound(c("n_reads","n_tail_reads"),0) |>
+            DT::formatStyle(
+                'cpm',
+                background = DT::styleColorBar(c(0,result$cpm)*1.1, '#aaaaff')) |>
+            DT::formatStyle(
+                c("tail90","tail50","tail10"),
+                background = DT::styleColorBar(c(0,result$tail90,result$tail50,result$tail10)*1.1, "#aaffaa")) |>
+            DT::formatStyle(
+                c("n","n_tail","n_tail_ended","n_reads","n_tail_reads"),
+                background = DT::styleColorBar(
+                    c(0,result$n,result$n_tail,result$n_tail_ended,result$n_reads,result$n_tail_reads)*1.1, "#aaaaaa"))
     })
 }
 

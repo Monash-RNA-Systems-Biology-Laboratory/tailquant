@@ -2,15 +2,14 @@
 # Filename convention
 fn <- function(dir, subdir, ...) file.path(dir, subdir, paste0(...))
 
-save_parquet <- function(obj, dir, subdir, ...) {
-    dir.create(dir, showWarnings=FALSE)
-    dir.create(file.path(dir, subdir), showWarnings=FALSE)
-    arrow::write_parquet(obj, fn(dir, subdir, ...))
+ensure_dir <- function(...) {
+    dir.create(file.path(...), showWarnings=FALSE)
 }
 
 load_parquet <- function(dir, subdir, ...) {
     arrow::open_dataset(fn(dir, subdir, ...))
 }
+
 
 #' Load site information from Tail Tools output
 #'
@@ -205,7 +204,7 @@ ingest_tt <- function(
     
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
     
-    dir.create(out_dir, showWarnings=FALSE)
+    ensure_dir(out_dir)
     
     # We can use more tail lengths if getting them from read 2
     must_be_close_to_site <- tail_source != "read2"
@@ -218,10 +217,10 @@ ingest_tt <- function(
         sample_names <- meta$samples$name
         
         dplyr::tibble(sample=sample_names) |>
-            save_parquet(out_dir,".","samples.parquet")
+            arrow::write_parquet(file.path(out_dir,"samples.parquet"))
     }
     
-    sample_names <- load_parquet(out_dir,".","samples.parquet") |> 
+    sample_names <- arrow::open_dataset(file.path(out_dir,"samples.parquet")) |> 
         dplyr::collect() |> 
         dplyr::pull(sample)
     
@@ -230,17 +229,13 @@ ingest_tt <- function(
         if (is.null(site_file)) 
             site_file <- in_dir
         load_tt_sites(site_file) |>
-            save_parquet(out_dir,".","sites.parquet")
+            arrow::write_parquet(file.path(out_dir,"sites.parquet"))
     }
     
     if (3 %in% steps) {
         message("Step 3: reads")
-        dir.create(file.path(out_dir, "reads"), showWarnings=FALSE)
+        ensure_dir(out_dir, "reads")
         parallel_walk(sample_names, \(sample) {
-            #message("Ingesting ", sample)
-            #file.path(in_dir,"samples",sample) |>
-            #    load_tt_sample(tail_source=tail_source, read_pairs_file=read_pairs_file, limit=limit) |>
-            #    save_parquet(out_dir,"reads",sample,".reads.parquet")
             load_tt_sample_into(
                 file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
                 file.path(in_dir,"samples",sample),
@@ -251,37 +246,32 @@ ingest_tt <- function(
     
     if (4 %in% steps) {
         message("Step 4: sited_reads")
-        
+        ensure_dir(out_dir, "sited_reads")
         parallel_walk(sample_names, \(sample) {
-            #message("Siting ", sample)
             sites <- load_parquet(out_dir,".","sites.parquet") |> dplyr::collect()
             load_parquet(out_dir,"reads",sample,".reads.parquet") |>
                 site_reads(sites, site_pad=site_pad, site_upstrand=site_upstrand) |>
-                save_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet")
-            NULL
+                arrow::write_parquet(file.path(out_dir,"sited_reads",paste0(sample,".sited_reads.parquet")))
         })
     }
     
     if (5 %in% steps) {
         message("Step 5: tail_counts")
-        #for(sample in sample_names) {
+        ensure_dir(out_dir,"tail_counts")
         parallel_walk(sample_names, \(sample) {
-            #message("Tail counting ", sample)
             load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
                 count_tails(min_tail=min_tail, length_trim=length_trim, must_be_close_to_site=must_be_close_to_site) |>
-                save_parquet(out_dir,"tail_counts",sample,".tail_counts.parquet")
-            NULL
+                arrow::write_parquet(file.path(out_dir,"tail_counts",paste0(sample,".tail_counts.parquet")))
         })
     }
     
     if (6 %in% steps) {
         message("Step 6: counts")
+        ensure_dir(out_dir,"counts")
         parallel_walk(sample_names, \(sample) {
-            #message("Counting ", sample)
             load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
                 count_umis() |>
-                save_parquet(out_dir,"counts",sample,".counts.parquet")
-            NULL
+                arrow::write_parquet(file.path(out_dir,"counts",paste0(sample,".counts.parquet")))
         })
     }
     
@@ -289,7 +279,7 @@ ingest_tt <- function(
         message("Step 7: stats")
         tq <- load_tq(out_dir)
         calc_site_stats(tq) |>
-            save_parquet(out_dir,".","sites.parquet")
+            arrow::write_parquet(file.path(out_dir,"sites.parquet"))
         rm(tq)
     }
     
