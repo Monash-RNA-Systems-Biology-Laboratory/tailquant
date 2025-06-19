@@ -75,7 +75,7 @@ test_server <- function(input, output, session, tq, tests) {
         reordering <- order(match(colnames(df_show), priority))
         df_show <- df_show[,reordering,drop=FALSE]
         
-        round_cols <- c("confect","effect","se","row_mean",contrasts)
+        round_cols <- intersect(colnames(df_show), c("confect","effect","se","row_mean",contrasts))
         signif_cols <- colnames(df_show)[purrr::map_lgl(df_show, is.numeric)] |>
             setdiff(c("n_present","rank",round_cols))
         
