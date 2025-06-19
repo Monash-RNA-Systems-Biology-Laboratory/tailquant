@@ -1,21 +1,42 @@
 
 # Compute values from a tailquant directory
 
-tq_get_cache <- function(tq, name, func) {
-    filename <- file.path(tq@dir, "cache", name)
-    if (file.exists(filename)) {
-        qs2::qs_read(filename)
-    } else {
-        result <- func(tq)
-        dir.create(file.path(tq@dir, "cache"), showWarnings=FALSE)
-        qs2::qs_save(result, filename)
-        result
+tq_get_cache <- function(tq, func, name=NA, version=NULL) {
+    have_name <- !is.na(name)
+    have <- FALSE
+    
+    if (have_name) {
+        filename <- file.path(tq@dir, "cache", name)
     }
+    
+    if (have_name && file.exists(filename)) {
+        #message("Have ", name)
+        result <- qs2::qs_read(filename)
+        have <- is.null(version) || identical(version, attr(result, "version"))
+        if (!have) {
+            warning("Version mismatch, updating ", name)
+        }
+    }
+    
+    if (!have) {
+        #message("Computing ", name)
+        result <- func()
+        if (!is.null(version)) {
+            attr(result, "version") <- version
+        }
+        
+        if (have_name) {
+            dir.create(file.path(tq@dir, "cache"), showWarnings=FALSE)
+            qs2::qs_save(result, filename)
+        }
+    }
+    
+    result
 }
 
 tq_cached <- function(name, func) {
     function(tq) {
-        tq_get_cache(tq, name, func)
+        tq_get_cache(tq, func=\() func(tq), name=name)
     }
 }
 
@@ -82,7 +103,7 @@ tq_counts_tail_ended <- tq_cached("counts_tail_ended.qs2",\(tq) {
 #' @export
 tq_counts_tail_ended_in_range <- function(tq, tail_min=0, tail_max=Inf) {
     name <- paste0("counts_tail_ended_in_",tail_min,"_",tail_max,".qs2")
-    tq_get_cache(tq, name, \(tq) {
+    tq_get_cache(tq, name=name, \() {
         tail_count_helper(tq, "n_died", tail_min, tail_max)
     })
 }
@@ -102,7 +123,7 @@ tq_lib_sizes <- tq_cached("lib_sizes.qs2",\(tq) {
 # This could be made much faster!
 tq_proportions <- function(tq, tail) {
     name <- paste0("proportions_",tail,".qs2")
-    tq_get_cache(tq, name, \(tq) {
+    tq_get_cache(tq, name=name, \() {
         sites <- tq_site_ids(tq)
         prop <- matrix(NA_real_, nrow=length(sites), ncol=nrow(tq@samples))
         rownames(prop) <- sites
@@ -136,7 +157,7 @@ tq_proportions <- function(tq, tail) {
 # This could be made much faster!
 tq_quantiles <- function(tq, prop) {
     name <- paste0("quantiles_",prop,".qs2")
-    tq_get_cache(tq, name, \(tq) {
+    tq_get_cache(tq, name=name, \() {
         sites <- tq_site_ids(tq)
         tail <- matrix(NA_real_, nrow=length(sites), ncol=nrow(tq@samples))
         rownames(tail) <- sites

@@ -2,13 +2,13 @@
 
 
 
-site_examiner_ui <- function(tq, title, max_tail=NA) {
+site_ui <- function(tq, max_tail=NA) {
     max_tail_upper <- tq_tail_range(tq)[2]
     if (is.na(max_tail)) {
         max_tail <- max_tail_upper
     }
     
-    options_panel <- shiny::tabPanel("Options",
+    options_panel <- bslib::nav_panel("Options",
         shiny::p(),
         shiny::div(
             style="width: 50%",
@@ -22,7 +22,7 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
         )
     )
     
-    samples_panel <- shiny::tabPanel("Sample selection",
+    samples_panel <- bslib::nav_panel("Sample selection",
         shiny::p(),
         shiny::checkboxGroupInput("which_samples", "Samples to show", 
             choices=tq@samples$sample,
@@ -30,12 +30,12 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
         shiny::p("Note: This sample selection does not affect aggregated tail length statistics, just plots showing individual samples.")
     )
     
-    table_panel <- shiny::tabPanel("Site selection",
+    table_panel <- bslib::nav_panel("Site selection",
         shiny::p(),
-        DT::DTOutput("table")
+        DT::DTOutput("table", fill=FALSE)
     )
     
-    explanation_panel <- shiny::tabPanel("Explanation",
+    explanation_panel <- bslib::nav_panel("Explanation",
         shiny::p(),
         shiny::p("n_reads = Number of reads."),
         shiny::p("n_tail_reads = Number of reads ending near the actual site rather than upstrand, and with a poly(A) tail."),
@@ -47,27 +47,26 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
         shiny::p("cpm = Counts Per Million, calculated from n.")
     )
     
-    ui <- shiny::fluidPage(
-        shiny::titlePanel(title),
+    ui <- shiny::tagList(
         shiny::wellPanel(
-            shiny::tabsetPanel(
+            bslib::navset_underline(
                 table_panel,
                 options_panel,
                 samples_panel,
                 explanation_panel
-            ),
+            )
         ),
         shiny::p(),
         shiny::uiOutput("site_info"),
-        shiny::tabsetPanel(
-            shiny::tabPanel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800)),
-            shiny::tabPanel("Site reverse cumulative distribution", plot_ui("survival_plot", width=1000, height=600)),
-            shiny::tabPanel("Site density", plot_ui("density_plot", width=1000, height=600)),
-            shiny::tabPanel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
-            shiny::tabPanel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
-            shiny::tabPanel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            #shiny::tabPanel("Site table", shiny::tableOutput("read_counts"))
-            shiny::tabPanel("Site table", DT::DTOutput("read_counts"))
+        bslib::navset_underline(
+            header=shiny::p(),
+            bslib::nav_panel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800)),
+            bslib::nav_panel("Site reverse cumulative distribution", plot_ui("survival_plot", width=1000, height=600)),
+            bslib::nav_panel("Site density", plot_ui("density_plot", width=1000, height=600)),
+            bslib::nav_panel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
+            bslib::nav_panel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
+            bslib::nav_panel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
+            bslib::nav_panel("Site table", DT::DTOutput("read_counts", fill=FALSE))
         ),
         
         shiny::div(style="height: 800px;")
@@ -76,7 +75,7 @@ site_examiner_ui <- function(tq, title, max_tail=NA) {
     ui
 }
 
-site_examiner_server <- function(tq, input,output,session) {
+site_server <- function(input, output, session, tq, get_sites_wanted=function() NULL) {
     sites <- tq@sites
     samples <- tq@samples
     
@@ -89,17 +88,31 @@ site_examiner_server <- function(tq, input,output,session) {
     df <- shiny::reactive({
         result <- sites
         # Backwards compatability
-        if (!"n_reads" %in% names(result))
+        if (!"n_reads" %in% names(result)) {
             result <- dplyr::mutate(result, n_reads=NA)
+        }
         result <- result |>
             dplyr::transmute(
                 site, name, location, n_tail_reads=n_reads, n_tail=n, n_tail_ended=n_died, 
                 tail90, tail50, tail10, tightness=tail90/tail10, 
                 relation, biotype, gene_id, product) |>
             dplyr::arrange(-n_tail_ended)
-        if (input$top_n > 0)
+        
+        want <- get_sites_wanted()
+        if (length(want) > 0) {
+            result <- dplyr::filter(result, site %in% want)
+        } else if (input$top_n > 0) {
             result <- dplyr::slice_head(result, n=input$top_n)
-        dplyr::collect(result)
+        }
+        
+        result <- dplyr::collect(result)
+        
+        if (length(want) > 0) {
+            rows <- match(result$site, want) |> na.omit()
+            result <- result[rows,]
+        }
+        
+        result
     })
     
     selected <- reactive({
@@ -157,7 +170,7 @@ site_examiner_server <- function(tq, input,output,session) {
             df_show,
             selection='single',
             rownames=FALSE, #width="100%", 
-            class='compact cell-border hover',
+            #class='compact cell-border hover',
             extensions='Buttons'
         ) |>
           DT::formatRound(c("tightness"),2) |>
@@ -311,14 +324,5 @@ site_examiner_server <- function(tq, input,output,session) {
                 background = DT::styleColorBar(
                     c(0,result$n,result$n_tail,result$n_tail_ended,result$n_reads,result$n_tail_reads)*1.1, "#aaaaaa"))
     })
-}
-
-
-#' @export
-shiny_site_examiner <- function(tq, title="Tail distribution examiner", max_tail=NA) {
-    shiny::shinyApp(
-        site_examiner_ui(tq, title=title, max_tail=max_tail)
-        ,\(...) site_examiner_server(tq, ...)
-    )
 }
 

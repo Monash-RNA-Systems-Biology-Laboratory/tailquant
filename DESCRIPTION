@@ -23,23 +23,27 @@ Imports:
     patchwork,
     forcats,
     stringr,
-    rtracklayer,
+    shiny,
+    bslib,
+    DT,
+    knitr,
+    cli,
+    assertthat,
+    Rcpp,
+    qs2,
     S4Vectors,
     IRanges,
     Biostrings,
     GenomicRanges,
     GenomicAlignments,
     Rsamtools,
-    shiny,
-    DT,
-    cli,
-    assertthat,
-    Rcpp,
-    qs2
+    rtracklayer,
+    edgeR,
+    limma,
+    weitrix
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 
-    knitr,
     rmarkdown
 VignetteBuilder: knitr

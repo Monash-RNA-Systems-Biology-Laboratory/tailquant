@@ -219,3 +219,65 @@ demux_reads <- function(out_dir, in_file, sample_names=NULL) {
 #        }
 #    })
 #}
+
+
+#' Examine a random selection of reads
+#' @export
+reads_peek <- function(in_file, n=10, line_width=100, seed=563) {
+    withr::local_seed(seed)
+    
+    pq <- arrow::open_dataset(in_file) 
+    i <- sample(nrow(pq), min(n,nrow(pq)))
+    df <- pq[i,] |> collect()
+    
+    for(i in seq_len(nrow(df))) {
+        cat(paste0(
+            "\n\n\n",
+            "sample=", df$sample[i],
+            " A*",df$poly_a_length[i], " T*",df$poly_t_length[i],"\n\n"))
+        
+        # Examine read 1
+        
+        seq <- stringr::str_split_1(df$read_1_seq[i],"")
+        qual <- stringr::str_split_1(df$read_1_qual[i],"")
+        ind <- seq_along(seq)
+        anno <- rep("-", length(seq))
+        anno[ind > df$read_1_clip[i]] <- " "
+        anno[ind >= df$poly_a_start[i] & ind <= df$poly_a_start[i]+df$poly_a_length[i]-1] <- "^"
+        
+        cat("Read 1:\n")
+        j <- 1
+        while(j <= length(seq)) {
+            k <- min(length(seq),j+line_width-1)
+            ind <- seq(j,k)
+            cat(paste0(
+                paste(qual[ind],collapse=""),"\n",
+                paste(seq[ind],collapse=""),"\n",
+                paste(anno[ind],collapse=""),"\n\n"))
+            j <- k+1
+        }
+        
+        # Examine read 2
+        
+        seq <- stringr::str_split_1(df$read_2_seq[i],"")
+        qual <- stringr::str_split_1(df$read_2_qual[i],"")
+        ind <- seq_along(seq)
+        anno <- rep("-", length(seq))
+        anno[ind <= 8] <- "b"
+        anno[ind >= 9 & ind <= 18] <- "u"
+        anno[ind > df$read_2_clip[i]] <- " "
+        anno[ind >= df$poly_t_start[i] & ind <= df$poly_t_start[i]+df$poly_t_length[i]-1] <- "^"
+        
+        cat("Read 2:\n")
+        j <- 1
+        while(j <= length(seq)) {
+            k <- min(length(seq),j+line_width-1)
+            ind <- seq(j,k)
+            cat(paste0(
+                paste(qual[ind],collapse=""),"\n",
+                paste(seq[ind],collapse=""),"\n",
+                paste(anno[ind],collapse=""),"\n\n"))
+            j <- k+1
+        }
+    }
+}
