@@ -27,7 +27,7 @@ test_ui <- function(tq, tests) {
     
     shiny::tagList(
         # Not sure this is the best place for this...
-        tags$style(type='text/css', ".selectize-dropdown-content {max-height: 600px; }"), 
+        shiny::tags$style(type='text/css', ".selectize-dropdown-content {max-height: 600px; }"), 
         bslib::navset_underline(
             header=shiny::p(),
             bslib::nav_panel("Configure", configure),
