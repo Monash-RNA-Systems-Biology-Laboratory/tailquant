@@ -65,18 +65,19 @@ test_server <- function(input, output, session, tq, tests) {
         
         df_show <- results()$table
         cols_keep <- setdiff(colnames(df_show), c(
-                "index", "df_seen", "F", "dispersion_seen", "df_seen", "dispersion_used", "df_used",
+                "index", "F", "dispersion_seen", "dispersion_used", "df", "df_seen", "df_used",
                 paste0(contrasts,"_se")))
         df_show <- df_show[, cols_keep]
         
         digits <- max(0, -floor(log10(results()$step)))
         
-        priority <- c("rank","name","confect","effect","fdr_zero","row_mean",contrasts)
+        priority <- c("rank","name","confect","effect","se","fdr_zero","row_mean",contrasts)
         reordering <- order(match(colnames(df_show), priority))
         df_show <- df_show[,reordering,drop=FALSE]
         
+        round_cols <- c("confect","effect","se","row_mean",contrasts)
         signif_cols <- colnames(df_show)[purrr::map_lgl(df_show, is.numeric)] |>
-            setdiff(c("confect","effect","rank","n_present",contrasts))
+            setdiff(c("n_present","rank",round_cols))
         
         DT::datatable(
             df_show,
@@ -84,7 +85,7 @@ test_server <- function(input, output, session, tq, tests) {
             rownames=FALSE, #width="100%", 
             #class='compact cell-border hover',
             extensions='Buttons') |>
-            DT::formatRound(c("confect","effect",contrasts), digits=digits) |>
+            DT::formatRound(round_cols, digits=digits) |>
             DT::formatSignif(signif_cols, digits=3)
     })
     
