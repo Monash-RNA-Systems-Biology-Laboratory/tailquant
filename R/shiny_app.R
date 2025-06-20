@@ -13,7 +13,8 @@ tq_shiny_ui <- function(tq, title, tests, max_tail=NA) {
     
     bslib::page_navbar(
         title = title,
-        #theme = bslib::bs_theme(version="3"),
+        theme = bslib::bs_theme(bootswatch="minty"),
+        navbar_options = bslib::navbar_options(bg="#ddffee"),
         selected = "Sites",
         tests_panel,
         bslib::nav_panel(title="Sites", site_ui(tq, max_tail)))

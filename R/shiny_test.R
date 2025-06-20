@@ -2,6 +2,7 @@
 test_ui <- function(tq, tests) {
     choices <- names(tests)
     names(choices) <- purrr::imap_chr(tests, \(item, name) item[["title"]] %||% name)
+    choices <- c("(no test)"="none", choices)
     
     test_type_choices <- names(test_types)
     names(test_type_choices) <- purrr::map_chr(test_types, "title")
@@ -20,6 +21,7 @@ test_ui <- function(tq, tests) {
         shiny::uiOutput("test_summary"))
     
     results <- shiny::tagList(
+        shiny::uiOutput("test_table_header"),
         DT::DTOutput("test_table", fill=FALSE))
     
     diagnostics <- shiny::tagList(
@@ -38,6 +40,8 @@ test_ui <- function(tq, tests) {
 
 test_server <- function(input, output, session, tq, tests) {
     results <- reactive(withProgress(message="Testing", value=NA, {
+        req(input$test_name != "none")
+        
         spec <- tests[[ input$test_name ]]
         spec$min_count <- input$test_min_count
         spec$min_count_in <- input$test_min_count_in
@@ -57,6 +61,10 @@ test_server <- function(input, output, session, tq, tests) {
             shiny::p(nrow(table), " ", results()$what),
             shiny::p(sum(!is.na(table$confect)), "significant ", results()$what),
             shiny::p(format(results()$df_prior, digits=3), "prior degrees of freedom"))
+    })
+    
+    output$test_table_header <- shiny::renderUI({
+        shiny::h3(results()$title)
     })
     
     output$test_table <- DT::renderDT(server=TRUE, {
@@ -93,7 +101,8 @@ test_server <- function(input, output, session, tq, tests) {
         spec <- attr(results(), "version")
         
         text <- capture.output({
-            cat("design=")
+            cat(results()$title)
+            cat("\n\ndesign=")
             print(knitr::kable(spec$design))
             cat("\ncontrasts=")
             rownames(spec$contrasts) <- colnames(spec$design)
@@ -105,7 +114,11 @@ test_server <- function(input, output, session, tq, tests) {
     })
     
     sites_wanted <- reactive({
-        results()$table$name[ input$test_table_rows_selected ]
+        wanted <- NULL
+        try({
+            wanted <- results()$table$name[ input$test_table_rows_selected ]
+        },silent=TRUE)
+        wanted
     })
     
     list(sites_wanted=sites_wanted)
