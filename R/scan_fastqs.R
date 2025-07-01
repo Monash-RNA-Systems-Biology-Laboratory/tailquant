@@ -87,7 +87,7 @@ ingest_read_pairs <- function(
     
     # Begin
     
-    cli::cli_progress_bar("Scanning read pairs")
+    cli::cli_progress_bar(format="Scanning read pairs | {scales::comma(cli::pb_current)} done | {scales::comma(cli::pb_rate_raw*60)}/m | {cli::pb_elapsed}")
     r1 <- file(reads1, open="r")
     withr::defer(close(r1))
     r2 <- file(reads2, open="r")
@@ -146,8 +146,29 @@ ingest_read_pairs <- function(
 
 #' Demultiplex into FASTQ files from parquet file
 #'
+#' Output read-1s into one FASTQ file per sample. Optionally clip off at poly(A) tail or low quality region. Read names have UMI and barcode appended.
+#'
+#' Various total read counts are provided in the output stats.parquet file. If clipping is disabled, statistics will reflect what would have been done if clipping was used.
+#'
+#' @param out_dir Directory to save fastq files.
+#'
+#' @param in_file Parquet filename, for file produced by ingest_read_pairs.
+#'
+#' @param clip Should reads be clipped. Don't use this if reads are intended for Tail Tools.
+#'
+#' @param clip_min_untemplated If clipping and a poly(A) tail plus expected suffix bases (UMI, barcode) was detected with at least this length, clip to this length. Otherwise clip at end of good quality region.
+#'
+#' @param clip_min_length If clipped read is shorter than this, discard it.
+#'
 #' @export
-demux_reads <- function(out_dir, in_file, sample_names=NULL) {
+demux_reads <- function(
+        out_dir, 
+        in_file, 
+        sample_names=NULL,
+        clip=FALSE,
+        clip_min_untemplated=12,
+        clip_min_length=20,
+        verbose=FALSE) {
     assertthat::assert_that(file.exists(in_file), msg="Input file doesn't exist.")
     
     if (is.null(sample_names)) {
@@ -157,34 +178,80 @@ demux_reads <- function(out_dir, in_file, sample_names=NULL) {
         sample_names <- sort(na.omit(df$sample))
     }
     
+    ensure_dir(out_dir)
+    
     # Do each sample separately.
     # A little inefficient, since it scans the parquet file for each sample.
     
-    queue <- local_queue()
-    
-    for(sample in sample_names) {
-        future_result <- future::future(seed=NULL, {
-            filename <- file.path(out_dir, paste0(sample, ".fastq.gz"))
-            con <- gzfile(filename, open="w")
-            withr::defer(close(con))
-            
-            scan_parquet(in_file, 
-                columns=c("readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual"), 
-                callback=\(df) {
-                    df <- dplyr::filter(df, sample == .env$sample)
-                    lines <- rbind(
-                        paste0("@",df$readname, "_", df$barcode,"_",df$umi),
-                        df$read_1_seq,
-                        rep("+",nrow(df)),
-                        df$read_1_qual)
-                    writeLines(lines, con=con)
-                })
-            
-            message(sample, " done")
-        })
+    result <- parallel_map(sample_names, \(sample) {
+        filename <- file.path(out_dir, paste0(sample, ".fastq.gz"))
+        con <- gzfile(filename, open="w")
+        withr::defer(close(con))
         
-        queue(future::value, future_result)
-    }    
+        # Need to record which reads had tails for site calling
+        if (clip) {
+            yield <- local_write_parquet(file.path(out_dir,paste0(sample,".parquet")))
+            yield(dplyr::tibble(readname=character(0), has_end=logical(0), has_tail=logical(0), tail=numeric(0)))
+        }
+        
+        total_reads <- 0
+        total_reads_kept <- 0
+        total_reads_ended <- 0
+        total_reads_tailed <- 0
+        
+        scan_parquet(in_file, 
+            columns=c(
+                "readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual",
+                "poly_a_length", "poly_a_suffix", "poly_a_start", "read_1_clip"), 
+            callback=\(df) {
+                df <- df |>
+                    dplyr::filter(sample == .env$sample) |>
+                    dplyr::mutate(
+                        readname = paste0(readname, "_", barcode,"_", umi),
+                        has_end  = poly_a_length+poly_a_suffix >= clip_min_untemplated,
+                        has_tail = poly_a_length >= clip_min_untemplated,
+                        clip = ifelse(has_end, poly_a_start-1, read_1_clip),
+                        keep = clip >= clip_min_length)
+                
+                total_reads <<- total_reads + nrow(df)
+                total_reads_kept <<- total_reads_kept +sum(df$keep)
+                total_reads_ended <<- total_reads_tailed + sum(df$keep & df$has_end)
+                total_reads_tailed <<- total_reads_tailed + sum(df$keep & df$has_tail)
+                
+                if (clip) {
+                    df <- df |>
+                        dplyr::filter(keep) |>
+                        dplyr::mutate(
+                            read_1_seq = substr(read_1_seq, 1, clip),
+                            read_1_qual = substr(read_1_qual, 1, clip))
+                    
+                    yield(dplyr::select(df, readname, has_end, has_tail, tail=poly_a_length))
+                }
+                
+                
+                lines <- rbind(
+                    paste0("@",df$readname),
+                    df$read_1_seq,
+                    rep("+",nrow(df)),
+                    df$read_1_qual)
+                writeLines(lines, con=con)
+            })
+        
+        if (verbose) {
+            message(sample, " done")
+        }
+        
+        dplyr::tibble(
+            sample=sample, 
+            reads=total_reads, 
+            reads_kept=total_reads_kept, 
+            reads_ended=total_reads_ended,
+            reads_tailed=total_reads_tailed)
+    })
+    
+    result <- result |> dplyr::bind_rows()
+    arrow::write_parquet(result, file.path(out_dir, "stats.parquet"))
+    result
 }
 
 #Code to output files all at once. Would need to be vectorized at least to be performant.

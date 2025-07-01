@@ -2,7 +2,7 @@
 test_ui <- function(tq, tests) {
     choices <- names(tests)
     names(choices) <- purrr::imap_chr(tests, \(item, name) item[["title"]] %||% name)
-    choices <- c("(no test)"="none", choices)
+    #choices <- c("(no test)"="none", choices)
     
     test_type_choices <- names(test_types)
     names(test_type_choices) <- purrr::map_chr(test_types, "title")
@@ -40,7 +40,7 @@ test_ui <- function(tq, tests) {
 
 test_server <- function(input, output, session, tq, tests) {
     results <- reactive(withProgress(message="Testing", value=NA, {
-        req(input$test_name != "none")
+        #req(input$test_name != "none")
         
         spec <- tests[[ input$test_name ]]
         spec$min_count <- input$test_min_count
@@ -113,7 +113,7 @@ test_server <- function(input, output, session, tq, tests) {
             shiny::pre(text))
     })
     
-    sites_wanted <- reactive({
+    sites_wanted <- eventReactive(input$test_table_rows_selected, {
         wanted <- NULL
         try({
             wanted <- results()$table$name[ input$test_table_rows_selected ]

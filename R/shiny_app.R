@@ -27,7 +27,15 @@ tq_shiny_server <- function(input, output, session, tq, tests) {
         test_get <- list(sites_wanted=function() NULL)
     }
     
-    site_server(input, output, session, tq=tq, get_sites_wanted=test_get$sites_wanted)
+    site_server(input, output, session, tq=tq) #, get_sites_wanted=test_get$sites_wanted)
+    
+    shiny::observe({
+        want <- test_get$sites_wanted()
+        if (length(want) == 1) {
+            shiny::updateTextInput(session, "search", 
+                value=paste0("site=^",stringr::str_escape(want),"$"))
+        }
+    })
 }
 
 #' Shiny tailquant interface

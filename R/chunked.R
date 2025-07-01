@@ -120,7 +120,7 @@ map_bam_chunks <- function(filename, param, callback, limit=NA, chunk=1e6) {
 
 
 #' @export
-local_queue <- function(workers = future::nbrOfWorkers()) {
+local_queue <- function(workers=future::nbrOfWorkers()) {
     queue <- list()
     
     drain_one <- function() {
@@ -146,6 +146,13 @@ parallel_walk <- function(vec, func, workers = future::nbrOfWorkers()) {
         future_result <- future::future(seed=NULL, func(item))
         queue(future::value, future_result)
     }
+}
+
+#' @export
+parallel_map <- function(vec, func) {
+    vec |>
+        purrr::map(\(item) future::future(seed=NULL, func(item))) |>
+        purrr::map(future::value)
 }
 
 # local({

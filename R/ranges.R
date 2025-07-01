@@ -21,3 +21,39 @@ find_overlaps <- function(chr1,start1,end1,strand1, chr2,start2,end2,strand2) {
         dplyr::as_tibble() |>
         dplyr::transmute(index1=queryHits, index2=subjectHits)
 }
+
+
+
+# Sometimes easier to process GRanges as a dataframe with signed positions 
+
+granges_to_sranges <- function(gr) {
+    df <- as.data.frame(gr) |> dplyr::as_tibble()
+    df$width <- NULL
+    df$strand <- strand_to_int(df$strand)
+    start <- df$start
+    end <- df$end
+    df$start <- ifelse(df$strand<0, -end, start)
+    df$end <- ifelse(df$strand<0, -start, end)
+    df
+}
+
+# Any negative start positions are trimmed, to keep IGV happy.
+sranges_to_granges <- function(df) {
+    start <- df$start
+    end <- df$end
+    df$start <- ifelse(df$strand<0, -end, start) |> pmax(1)
+    df$end <- ifelse(df$strand<0, -start, end)
+    df$strand <- strand_to_char(df$strand)
+    GenomicRanges::GRanges(df)
+}
+
+sranges_find_overlaps <- function(r1, r2) {
+    r1 <- sranges_to_granges(r1)
+    r2 <- sranges_to_granges(r2)
+    
+    suppressWarnings(GenomicRanges::findOverlaps(r1, r2)) |> 
+        as.data.frame() |> 
+        dplyr::as_tibble() |>
+        dplyr::transmute(index1=queryHits, index2=subjectHits)
+}
+

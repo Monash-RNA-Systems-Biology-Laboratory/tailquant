@@ -1,6 +1,43 @@
 
 
 
+site_table_search <- function(df, query) {
+    parts <- stringr::str_split_1(query, "\\s+")
+    parts <- parts[nchar(parts) > 0]
+    
+    keep <- rep(TRUE, nrow(df))
+    for(part in parts) {
+        this_query <- stringr::fixed(part, ignore_case=TRUE)
+        cols <- colnames(df)
+        found <- rep(FALSE, nrow(df))
+        search <- TRUE
+        match <- stringr::str_match(part,"(.*?)=(.*)")
+        if (!is.na(match[2])) {
+            if (match[2] == "top") {
+                n <- as.integer(match[3])
+                if (!is.na(n))
+                    found <- seq_len(nrow(df)) <= n
+                search <- FALSE
+            } else if (match[2] %in% cols && match[3] != "") {
+                cols <- match[2]
+                this_query <- stringr::regex(match[3], ignore_case=TRUE)
+            }
+        }
+        
+        if (search) {
+            for(col in cols) {
+                hits <- stringr::str_detect(df[[col]], this_query)
+                hits[is.na(hits)] <- FALSE
+                found <- found | hits
+            }
+        }
+        keep <- keep & found
+    }
+    df <- df[keep,]
+    df
+}
+
+
 
 site_ui <- function(tq, max_tail=NA) {
     max_tail_upper <- tq_tail_range(tq)[2]
@@ -12,7 +49,7 @@ site_ui <- function(tq, max_tail=NA) {
         shiny::p(),
         shiny::div(
             style="width: 50%",
-            shiny::numericInput("top_n", "List this many top sites by n_tail_ended (0=all)", value=0, min=0, step=1),
+            #shiny::numericInput("top_n", "List this many top sites by n_tail_ended (0=all)", value=0, min=0, step=1),
             shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
             shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail, min=1, max=max_tail_upper, step=1),
             shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
@@ -31,11 +68,15 @@ site_ui <- function(tq, max_tail=NA) {
     )
     
     table_panel <- bslib::nav_panel("Site selection",
-        shiny::p(),
+        shiny::textInput("search", label="", value="", placeholder="Search, see explanation, examples: top=1000 name=^PAP", width="50%"),
         DT::DTOutput("table", fill=FALSE)
     )
     
     explanation_panel <- bslib::nav_panel("Explanation",
+        shiny::p(),
+        shiny::p("Searching:"),
+        shiny::p(shiny::strong("top=NNN"), " for the top NNN genes by n_tail_ended."),
+        shiny::p(shiny::strong("column_name=regex "), " to search particular columns."),
         shiny::p(),
         shiny::p("n_reads = Number of reads."),
         shiny::p("n_tail_reads = Number of reads ending near the actual site rather than upstrand, and with a poly(A) tail."),
@@ -43,7 +84,7 @@ site_ui <- function(tq, max_tail=NA) {
         shiny::p("n_tail = Number of UMIs with a poly(A) tail."),
         shiny::p("n_tail_ended = Number of UMIs with a poly(A) tail that ended before the end of the read."),
         shiny::p("tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length."),
-        shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first."),
+        #shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first."),
         shiny::p("cpm = Counts Per Million, calculated from n.")
     )
     
@@ -60,13 +101,13 @@ site_ui <- function(tq, max_tail=NA) {
         shiny::uiOutput("site_info"),
         bslib::navset_underline(
             header=shiny::p(),
-            bslib::nav_panel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800)),
+            bslib::nav_panel("Site table", DT::DTOutput("read_counts", fill=FALSE)),
             bslib::nav_panel("Site reverse cumulative distribution", plot_ui("survival_plot", width=1000, height=600)),
             bslib::nav_panel("Site density", plot_ui("density_plot", width=1000, height=600)),
             bslib::nav_panel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
             bslib::nav_panel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
             bslib::nav_panel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            bslib::nav_panel("Site table", DT::DTOutput("read_counts", fill=FALSE))
+            bslib::nav_panel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800))
         ),
         
         shiny::div(style="height: 800px;")
@@ -75,7 +116,7 @@ site_ui <- function(tq, max_tail=NA) {
     ui
 }
 
-site_server <- function(input, output, session, tq, get_sites_wanted=function() NULL) {
+site_server <- function(input, output, session, tq) { #, get_sites_wanted=function() NULL) {
     sites <- tq@sites
     samples <- tq@samples
     
@@ -84,6 +125,8 @@ site_server <- function(input, output, session, tq, get_sites_wanted=function() 
     # Possibly this should be done in tq_load
     lib_sizes <- tq_lib_sizes(tq)
     samples <- dplyr::left_join(samples, lib_sizes, by="sample")
+    
+    search <- debounce(reactive(input$search), 100)
     
     df <- shiny::reactive({
         result <- sites
@@ -94,29 +137,37 @@ site_server <- function(input, output, session, tq, get_sites_wanted=function() 
         result <- result |>
             dplyr::transmute(
                 site, name, location, n_tail_reads=n_reads, n_tail=n, n_tail_ended=n_died, 
-                tail90, tail50, tail10, tightness=tail90/tail10, 
+                tail90, tail50, tail10, #tightness=tail90/tail10, 
                 relation, biotype, gene_id, product) |>
             dplyr::arrange(-n_tail_ended)
         
-        want <- get_sites_wanted()
-        if (length(want) > 0) {
-            result <- dplyr::filter(result, site %in% want)
-        } else if (input$top_n > 0) {
-            result <- dplyr::slice_head(result, n=input$top_n)
-        }
+        #want <- get_sites_wanted()
+        #if (length(want) > 0) {
+        #    result <- dplyr::filter(result, site %in% want)
+        #} else if (input$top_n > 0) {
+        #    result <- dplyr::slice_head(result, n=input$top_n)
+        #}
         
         result <- dplyr::collect(result)
         
-        if (length(want) > 0) {
-            rows <- match(result$site, want) |> na.omit()
-            result <- result[rows,]
-        }
+        #if (length(want) > 0) {
+        #    rows <- match(result$site, want) |> na.omit()
+        #    result <- result[rows,]
+        #}
+        
+        result <- site_table_search(result, search())
+        
+        #if (input$top_n > 0) {
+        #    result <- dplyr::slice_head(result, n=input$top_n)
+        #}
         
         result
     })
     
     selected <- reactive({
         req(input$table_rows_current)
+        req(nrow(df()) > 0)
+        
         row <- input$table_rows_current[1]
         if (length(input$table_rows_selected) == 1 &&
             input$table_rows_selected %in% input$table_rows_current)
@@ -169,16 +220,19 @@ site_server <- function(input, output, session, tq, get_sites_wanted=function() 
         DT::datatable(
             df_show,
             selection='single',
-            rownames=FALSE, #width="100%", 
+            rownames=FALSE, 
+            #width="100%", 
             #class='compact cell-border hover',
-            extensions='Buttons'
+            #extensions='Buttons'
+            options=list(searching=FALSE)
         ) |>
-          DT::formatRound(c("tightness"),2) |>
+          #DT::formatRound(c("tightness"),2) |>
           DT::formatRound(c("n_tail_reads","n_tail","n_tail_ended"),0) |>
           DT::formatStyle(names(df_show), "white-space"="nowrap")
     })
     
     output$site_info <- shiny::renderUI({
+        req(selected())
         has_gene <- !is.na(selected()$gene_id)
         shiny::div(
             shiny::strong("Selected site ", selected()$site, " at ", selected()$location),
