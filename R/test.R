@@ -30,6 +30,14 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
     result <- weitrix::weitrix_confects(voomed, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
     result$title <- paste0("Differential expression: ", title)
     result$what <- "sites"
+    
+    sites <- tq@sites |>
+        dplyr::select(site, gene_id, name, biotype, product) |>
+        dplyr::collect()
+    i <- match(result$table$name, sites$site)
+    result$table$gene_name <- sites$name[i]
+    result$table$biotype <- sites$biotype[i]
+    
     result
 }
 
@@ -56,6 +64,48 @@ tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10
     result <- weitrix::weitrix_confects(cal, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
     result$title <- paste0("Differential tail length, quantile ",prop*100,"%: ", title)
     result$what <- "sites"
+    
+    sites <- tq@sites |>
+        dplyr::select(site, gene_id, name, biotype, product) |>
+        dplyr::collect()
+    i <- match(result$table$name, sites$site)
+    result$table$gene_name <- sites$name[i]
+    result$table$biotype <- sites$biotype[i]
+    
+    result
+}
+
+tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, title="a test") {
+    check_design(tq, design)
+    
+    counts <- tq_counts(tq)
+    counts <- counts[,rownames(design),drop=FALSE]
+    
+    sites <- tq@sites |>
+        dplyr::select(site, chr, pos, strand, gene_id, name, biotype, product) |>
+        dplyr::collect() |>
+        dplyr::filter(dplyr::n() >= 2, .by=gene_id) |>
+        dplyr::arrange(gene_id, pos*strand)
+    
+    wei <- weitrix::counts_shift(
+        counts[sites$site,,drop=FALSE], 
+        dplyr::select(sites, group=gene_id, name=site))
+    
+    keep <- rowSums(weitrix::weitrix_weights(wei) >= min_count) >= min_count_in
+    wei <- wei[keep,]
+    
+    #TODO: filter to full rank?
+    
+    cal <- weitrix::weitrix_calibrate_all(wei, design)
+    
+    result <- weitrix::weitrix_confects(cal, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
+    result$title <- paste0("End shift: ", title)
+    result$what <- "genes"
+    
+    i <- match(result$table$name, sites$gene_id)
+    result$table$gene_name <- sites$name[i]
+    result$table$biotype <- sites$biotype[i]
+    
     result
 }
 
@@ -64,27 +114,31 @@ test_types <- list(
     "expression" = list(
         title="Site expression",
         func=tq_test_expression, 
-        version=1),
+        version=2),
+    "shift" = list(
+        title="End shift",
+        func=tq_test_shift,
+        version=2),
     "quantile90" = list(
         title="Tail length, 90% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.9, ...), 
-        version=1),
+        version=2),
     "quantile75" = list(
         title="Tail length, 75% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.75, ...), 
-        version=1),
+        version=2),
     "quantile50" = list(
         title="Tail length, 50% are longer (median)",
         func=\(tq, ...) tq_test_quantile(tq, 0.5, ...), 
-        version=1),
+        version=2),
     "quantile25" = list(
         title="Tail length, 25% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.25, ...), 
-        version=1),
+        version=2),
     "quantile10" = list(
         title="Tail length, 10% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.1, ...), 
-        version=1))
+        version=2))
 
 
 #' @export
