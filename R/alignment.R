@@ -17,12 +17,11 @@ run_aligner <- function(out_dir, in_dir, star_dir, samples, threads=parallel::de
             " --genomeDir ", shQuote(star_dir),
             " --outFileNamePrefix ", shQuote(file.path(out_dir, paste0(samples[i],"."))),
             " --outSAMtype BAM SortedByCoordinate",
-            " --outStd SAM",
             " --readFilesIn ", shQuote(sample_filenames[i]),
             " --readFilesCommand zcat",
             " --outMultimapperOrder Random",
             " --runRNGseed 563",
-            # No de novo introns, annotated introns will still be used
+            # No de-novo introns, annotated introns will still be used
             " --alignIntronMax 20")
         # By default multimappers will be output if there are less than 10 locations.
         
@@ -47,7 +46,10 @@ make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename) {
     
     scan_bam_chunks(
             bam_filename,
-            Rsamtools::ScanBamParam(what="qname", tag="NH"),
+            Rsamtools::ScanBamParam(
+                what="qname", 
+                tag="NH",
+                flag=Rsamtools::scanBamFlag(isSecondaryAlignment=FALSE)),
             \(alignments) {
         coverage_fwd <<- combine(coverage_fwd, 
             GenomicAlignments::coverage(alignments[ GenomicAlignments::strand(alignments) == "+" ]))

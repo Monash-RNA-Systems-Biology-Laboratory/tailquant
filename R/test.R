@@ -8,10 +8,28 @@ check_design <- function(tq, design) {
         msg="Design matrix row names must match sample names.")
 }
 
-get_keep <- function(counts, min_count, min_count_in) {
+# Which rows are estimable?
+check_full_rank <- function(present, design, tol=1e-10) {
+    full_rank <- function(selection) {
+        if (sum(selection) < ncol(design)) return(FALSE)
+        sum(abs(svd(design[selection,,drop=F])$d)>=tol) == ncol(design)
+    }
+    apply(present, 1, full_rank)
+}
+
+# Which rows should be kept?
+# **DO NOT provide design for differential expression, as check_full_rank should not be applied here!**
+get_keep <- function(counts, min_count, min_count_in, design=NULL) {
     lib_sizes <- colSums(counts)
     cutoffs <- min_count / median(lib_sizes) * lib_sizes
-    colSums(t(counts) >= cutoffs) >= min_count_in
+    present <- counts >= cutoffs
+    keep <- rowSums(present) >= min_count_in
+    
+    if (!is.null(design)) {
+        keep[keep] <- check_full_rank(present[keep,,drop=FALSE], design)
+    }
+    
+    keep
 }
 
 tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, title="a test") {
@@ -38,6 +56,12 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
     result$table$gene_name <- sites$name[i]
     result$table$biotype <- sites$biotype[i]
     
+    result$plots <- list()
+    result$plots[["Calibration vs sample"]] <- 
+        compact_plot(weitrix::weitrix_calplot(voomed, design, cat=col))
+    result$plots[["Calibration vs expression"]] <- 
+        compact_plot(weitrix::weitrix_calplot(voomed, design, covar=mu))
+    
     result
 }
 
@@ -46,7 +70,7 @@ tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10
     weights <- tq_counts_tail_ended(tq)
     tails <- tq_quantiles(tq, prop)
     
-    keep <- get_keep(weights, min_count, min_count_in)
+    keep <- get_keep(weights, min_count, min_count_in, design)
     
     weights <- weights[keep,,drop=FALSE]
     tails <- tails[keep,,drop=FALSE]
@@ -59,7 +83,8 @@ tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10
     
     wei <- weitrix::as_weitrix(tails, weights)
     cal <- weitrix::weitrix_calibrate_all(
-        wei, design, ~ weitrix::well_knotted_spline(log(weight), 3) + weitrix::well_knotted_spline(mu, 3))
+        wei, design, 
+        ~ weitrix::well_knotted_spline(log(weight), 3) + weitrix::well_knotted_spline(mu, 3))
     
     result <- weitrix::weitrix_confects(cal, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
     result$title <- paste0("Differential tail length, quantile ",prop*100,"%: ", title)
@@ -72,8 +97,15 @@ tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10
     result$table$gene_name <- sites$name[i]
     result$table$biotype <- sites$biotype[i]
     
+    result$plots <- list()
+    result$plots[["Calibration vs sample"]] <- 
+        compact_plot(weitrix::weitrix_calplot(cal, design, cat=col))
+    result$plots[["Calibration vs prediction"]] <- 
+        compact_plot(weitrix::weitrix_calplot(cal, design, covar=mu))
+    
     result
 }
+
 
 tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, title="a test") {
     check_design(tq, design)
@@ -91,10 +123,8 @@ tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_cou
         counts[sites$site,,drop=FALSE], 
         dplyr::select(sites, group=gene_id, name=site))
     
-    keep <- rowSums(weitrix::weitrix_weights(wei) >= min_count) >= min_count_in
+    keep <- get_keep(weitrix::weitrix_weights(wei), min_count, min_count_in, design)
     wei <- wei[keep,]
-    
-    #TODO: filter to full rank?
     
     cal <- weitrix::weitrix_calibrate_all(wei, design)
     
@@ -106,6 +136,12 @@ tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_cou
     result$table$gene_name <- sites$name[i]
     result$table$biotype <- sites$biotype[i]
     
+    result$plots <- list()
+    result$plots[["Calibration vs sample"]] <- 
+        compact_plot(weitrix::weitrix_calplot(cal, design, cat=col))
+    result$plots[["Calibration vs prediction"]] <- 
+        compact_plot(weitrix::weitrix_calplot(cal, design, covar=mu))
+    
     result
 }
 
@@ -114,31 +150,31 @@ test_types <- list(
     "expression" = list(
         title="Site expression",
         func=tq_test_expression, 
-        version=2),
+        version=4),
     "shift" = list(
         title="End shift",
         func=tq_test_shift,
-        version=2),
+        version=4),
     "quantile90" = list(
         title="Tail length, 90% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.9, ...), 
-        version=2),
+        version=4),
     "quantile75" = list(
         title="Tail length, 75% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.75, ...), 
-        version=2),
+        version=4),
     "quantile50" = list(
         title="Tail length, 50% are longer (median)",
         func=\(tq, ...) tq_test_quantile(tq, 0.5, ...), 
-        version=2),
+        version=4),
     "quantile25" = list(
         title="Tail length, 25% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.25, ...), 
-        version=2),
+        version=4),
     "quantile10" = list(
         title="Tail length, 10% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.1, ...), 
-        version=2))
+        version=4))
 
 
 #' @export

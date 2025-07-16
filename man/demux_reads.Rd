@@ -4,8 +4,30 @@
 \alias{demux_reads}
 \title{Demultiplex into FASTQ files from parquet file}
 \usage{
-demux_reads(out_dir, in_file, sample_names = NULL)
+demux_reads(
+  out_dir,
+  in_file,
+  sample_names = NULL,
+  clip = FALSE,
+  clip_min_untemplated = 12,
+  clip_min_length = 20,
+  verbose = FALSE
+)
+}
+\arguments{
+\item{out_dir}{Directory to save fastq files.}
+
+\item{in_file}{Parquet filename, for file produced by ingest_read_pairs.}
+
+\item{clip}{Should reads be clipped. Don't use this if reads are intended for Tail Tools.}
+
+\item{clip_min_untemplated}{If clipping and a poly(A) tail plus expected suffix bases (UMI, barcode) was detected with at least this length, clip to this length. Otherwise clip at end of good quality region.}
+
+\item{clip_min_length}{If clipped read is shorter than this, discard it.}
 }
 \description{
-Demultiplex into FASTQ files from parquet file
+Output read-1s into one FASTQ file per sample. Optionally clip off at poly(A) tail or low quality region. Read names have UMI and barcode appended.
+}
+\details{
+Various total read counts are provided in the output stats.parquet file. If clipping is disabled, statistics will reflect what would have been done if clipping was used.
 }

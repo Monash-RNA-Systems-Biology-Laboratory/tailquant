@@ -22,6 +22,7 @@ Imports:
     ggridges,
     scales,
     patchwork,
+    cowplot,
     forcats,
     stringr,
     shiny,

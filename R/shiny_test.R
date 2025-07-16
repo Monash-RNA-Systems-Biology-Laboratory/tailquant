@@ -109,8 +109,20 @@ test_server <- function(input, output, session, tq, tests) {
             print(knitr::kable(spec$contrasts))
         }) |> paste(collapse="\n")
         
+        plot_area <- NULL
+        if (!is.null(results()$plots)) {
+            plot_area <- shiny::tagList(
+                shiny::selectizeInput("test_plot_wanted", "Diagnostic plot", choices=names(results()$plots)),
+                shiny::plotOutput("test_plot", inline=TRUE))
+        }
+        
         shiny::div(
+            plot_area,
             shiny::pre(text))
+    })
+    
+    output$test_plot <- shiny::renderPlot(res=96, width=800, height=600, {
+        results()$plots[[ input$test_plot_wanted ]]
     })
     
     sites_wanted <- eventReactive(input$test_table_rows_selected, {
@@ -118,7 +130,7 @@ test_server <- function(input, output, session, tq, tests) {
         try({
             wanted <- results()$table$name[ input$test_table_rows_selected ]
         },silent=TRUE)
-        wanted
+        list(what=results()$what, name=wanted)
     })
     
     list(sites_wanted=sites_wanted)

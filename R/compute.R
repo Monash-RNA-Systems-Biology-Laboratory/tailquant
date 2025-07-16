@@ -56,19 +56,34 @@ tq_tail_range <- tq_cached("tail_range.qs2", \(tq) {
     c(min(ranges$min), max(0, ranges$max))
 })
 
-#' @export
-tq_counts <- tq_cached("counts.qs2",\(tq) {
+
+counts_helper <- function(tq, colname) {
     sites <- tq_site_ids(tq)
     result <- matrix(0, nrow=length(sites), ncol=nrow(tq@samples))
     rownames(result) <- sites
     colnames(result) <- tq@samples$sample
     
     for(i in seq_len(ncol(result))) {
-        df <- tq@samples$counts[[i]] |> dplyr::select(site, n) |> dplyr::collect()
+        df <- tq@samples$counts[[i]] |> dplyr::select(site, n=all_of(colname)) |> dplyr::collect()
         result[ match(df$site, sites), i ] <- df$n
     }
     
     result
+}
+
+#' @export
+tq_counts <- tq_cached("counts.qs2",\(tq) {
+    counts_helper(tq, "n")
+})
+
+#' @export
+tq_counts_read <- tq_cached("counts_read.qs2",\(tq) {
+    counts_helper(tq, "n_read")
+})
+
+#' @export
+tq_counts_read_multimapper <- tq_cached("counts_read_multimapper.qs2",\(tq) {
+    counts_helper(tq, "n_read_multimapper")
 })
 
 

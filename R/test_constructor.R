@@ -33,12 +33,12 @@ make_test <- function(samples, groups, group1, group2, batches=NULL, name=NULL, 
     colnames(contrasts) <- paste0(group2,"-",group1)
     
     test <- list(
-        title = title %||% paste0(group1, " to ", group2),
+        title = title %||% paste0(group1, " to ", group2, collapse=" or "),
         design = design,
         contrasts = contrasts)
     
     result <- list(test)
-    names(result) <- name %||% paste0(group1,"_to_",group2, collapse=" or ")
+    names(result) <- name %||% paste0(group1,"_to_",group2, collapse="_or_")
     result
 }
 
@@ -52,6 +52,28 @@ make_test_oneway_anova <- function(samples, groups, batches=NULL) {
     make_test(
         samples, groups, rep(levels[1],n-1), levels[-1], batches, 
         name="any", title="Any change")
+}
+
+make_test_average <- function(samples, groups, group1, group2, batches=NULL, name=NULL, title=NULL) {
+    design <- make_design(samples, groups, batches)
+    coefs <- colnames(design)
+    
+    contrasts <- matrix(0, nrow=length(coefs), ncol=1)
+    contrasts[ coefs %in% group1, 1 ] <- -1/length(group1)
+    contrasts[ coefs %in% group2, 1 ] <-  1/length(group2)
+    colnames(contrasts) <- "difference"
+    
+    group1_text <- paste0("avg_",paste0(group1,collapse="_"))
+    group2_text <- paste0("avg_",paste0(group2,collapse="_"))
+    
+    test <- list(
+        title = title %||% paste0(group1_text, " to ", group2_text),
+        design = design,
+        contrasts = contrasts)
+    
+    result <- list(test)
+    names(result) <- name %||% paste0(group1_text,"_to_",group2_text)
+    result
 }
 
 #' @export
@@ -89,7 +111,21 @@ make_tests_twoway_helper <- function(samples, groups1, groups2, batches=NULL) {
     levels <- levels(groups1)
     n <- length(levels)
     
-    for(level2 in levels(groups2)) {
+    levels2 <- levels(groups2)
+    
+    for(i in seq(1,n-1)) {
+        for(j in seq(i+1,n)) {
+            result <- c(result,
+                make_test_average(samples, groups,
+                    paste0(levels[i],"_",levels2),
+                    paste0(levels[j],"_",levels2),
+                    batches,
+                    name=paste0("avg_",levels[i],"_to_",levels[j]),
+                    title=paste0("Average change ",levels[i]," to ",levels[j])))
+        }
+    }
+    
+    for(level2 in levels2) {
         this_levels <- paste0(levels,"_",level2)
         if (n > 2) {
             result <- c(result,

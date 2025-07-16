@@ -12,10 +12,11 @@ tq_shiny_ui <- function(tq, title, tests, max_tail=NA) {
     }
     
     bslib::page_navbar(
-        title = title,
-        theme = bslib::bs_theme(bootswatch="minty"),
+        title=title,
+        theme = bslib::bs_theme(bootswatch="cosmo"),
         navbar_options = bslib::navbar_options(bg="#ddffee"),
         selected = "Sites",
+        bslib::nav_item("/"),
         tests_panel,
         bslib::nav_panel(title="Sites", site_ui(tq, max_tail)))
 }
@@ -31,9 +32,13 @@ tq_shiny_server <- function(input, output, session, tq, tests) {
     
     shiny::observe({
         want <- test_get$sites_wanted()
-        if (length(want) == 1) {
-            shiny::updateTextInput(session, "search", 
-                value=paste0("site=^",stringr::str_escape(want),"$"))
+        print(want)
+        if (length(want$name) == 1) {
+            if (want$what == "genes")
+                query <- paste0("gene_id=^",stringr::str_escape(want$name),"$")
+            else
+                query <- paste0("site=^",stringr::str_escape(want$name),"$")
+            shiny::updateTextInput(session, "search", value=query)
         }
     })
 }

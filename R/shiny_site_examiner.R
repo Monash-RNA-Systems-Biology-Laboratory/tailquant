@@ -131,15 +131,21 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     df <- shiny::reactive({
         result <- sites
         # Backwards compatability
-        if (!"n_reads" %in% names(result)) {
-            result <- dplyr::mutate(result, n_reads=NA)
-        }
+        if (!"all_n_read" %in% names(result))
+            result <- dplyr::mutate(result, all_n_read=NA)
+        if (!"all_n_read_multimapper" %in% names(result))
+            result <- dplyr::mutate(result, all_n_read_multimapper=NA)
+        if (!"all_n" %in% names(result))
+            result <- dplyr::mutate(result, all_n=NA)
+        
         result <- result |>
             dplyr::transmute(
-                site, name, location, n_tail_reads=n_reads, n_tail=n, n_tail_ended=n_died, 
-                tail90, tail50, tail10, #tightness=tail90/tail10, 
+                site, name, location, n=all_n, tail_n, tail_n_ended=tail_n_died, 
+                tail90, tail50, tail10, 
+                multimapping=all_n_read_multimapper / all_n_read,
+                #tightness=tail90/tail10, 
                 relation, biotype, gene_id, product) |>
-            dplyr::arrange(-n_tail_ended)
+            dplyr::arrange(-tail_n_ended)
         
         #want <- get_sites_wanted()
         #if (length(want) > 0) {
@@ -173,9 +179,12 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             input$table_rows_selected %in% input$table_rows_current)
             row <- input$table_rows_selected
         site <- df()$site[row]
-        sites |>
+        result <- sites |>
             dplyr::filter(site == .env$site) |>
             dplyr::collect()
+        
+        req(nrow(result) == 1)
+        result
     })
     
     selected_samples <- reactive({
@@ -227,7 +236,8 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             options=list(searching=FALSE)
         ) |>
           #DT::formatRound(c("tightness"),2) |>
-          DT::formatRound(c("n_tail_reads","n_tail","n_tail_ended"),0) |>
+          DT::formatRound(c("n","tail_n","tail_n_ended"),0) |>
+          DT::formatRound(c("multimapping"),2) |>
           DT::formatStyle(names(df_show), "white-space"="nowrap")
     })
     
@@ -340,11 +350,13 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
                 dplyr::filter(item, site == .env$selected()$site) |> dplyr::collect())
             n <- purrr::map_dbl(counts, \(item) sum(item$n))
             n_reads <- purrr::map_dbl(counts, \(item) sum(item$n_read))
+            n_multimapper_reads <- purrr::map_dbl(counts, \(item) sum(item$n_read_multimapper %||% NA))
             
             cpm <- n * 1e6 / selected_samples()$lib_size
         } else {
             n <- NULL
             n_reads <- NULL
+            n_multimapper_reads <- NULL
             cpm <- NULL
         }
         
@@ -359,14 +371,15 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             n_tail_ended=purrr::map_dbl(df$tail_counts,\(item) sum(item$n_died)),
             n_reads=n_reads,
             n_tail_reads=purrr::map_dbl(df$tail_counts,\(item) 
-                if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA))
+                if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA),
+            n_multimapper_reads)
         
         DT::datatable(
             result,
             rownames=FALSE,
             options=list(pageLength=100)) |>
             DT::formatRound(c("cpm","n","n_tail","n_tail_ended","tail90","tail50","tail10"),1) |>
-            DT::formatRound(c("n_reads","n_tail_reads"),0) |>
+            DT::formatRound(c("n_reads","n_tail_reads","n_multimapper_reads"),0) |>
             DT::formatStyle(
                 'cpm',
                 background = DT::styleColorBar(c(0,result$cpm)*1.1, '#aaaaff')) |>
@@ -374,7 +387,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
                 c("tail90","tail50","tail10"),
                 background = DT::styleColorBar(c(0,result$tail90,result$tail50,result$tail10)*1.1, "#aaffaa")) |>
             DT::formatStyle(
-                c("n","n_tail","n_tail_ended","n_reads","n_tail_reads"),
+                c("n","n_tail","n_tail_ended","n_reads","n_tail_reads","n_multimapper_reads"),
                 background = DT::styleColorBar(
                     c(0,result$n,result$n_tail,result$n_tail_ended,result$n_reads,result$n_tail_reads)*1.1, "#aaaaaa"))
     })

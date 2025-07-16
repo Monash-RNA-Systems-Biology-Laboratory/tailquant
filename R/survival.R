@@ -118,33 +118,48 @@ km_complete <- function(km, min_tail=0, max_tail=NULL) {
 #' @param site_upstrand Reads ending at most this far upstrand will also be included in UMI counts.
 #'
 #' @export
-site_reads <- function(reads, sites, site_pad, site_upstrand) {
+site_reads_into <- function(dest_filename, reads_filename, sites, site_pad, site_upstrand) {
     sites <- dplyr::collect(sites)
-    reads <- dplyr::collect(reads)
     
-    # Associate reads with sites
-    left <- ifelse(sites$strand < 0,  site_pad,      site_upstrand)
-    right <- ifelse(sites$strand < 0, site_upstrand, site_pad)
-    hits <- tailquant:::find_overlaps(
-        sites$chr, sites$pos-left, sites$pos+right, sites$strand,
-        reads$chr, reads$pos, reads$pos, reads$strand)
+    yield <- local_write_parquet(dest_filename)
+    yield(dplyr::tibble(
+        site=character(0),
+        close_to_site=logical(0),
+        chr=character(0),
+        pos=integer(0),
+        strand=integer(0),
+        num_hits=integer(0),
+        length=numeric(0),
+        tail_start=numeric(0),
+        tail=numeric(0),
+        umi=character(0)))
     
-    # If multiple hits, choose nearest to actual pos
-    hits$offset <- abs(reads$pos[hits$index2] - sites$pos[hits$index1])
-    #This was unexpectedly slow:
-    #hits <- dplyr::slice_min(hits, offset, n=1, by=index2, with_ties=FALSE)
-    #So:
-    hits <- dplyr::summarize(hits, index1=index1[which.min(offset)], .by=c(index2))
-    
-    hits$close_to_site <- abs(reads$pos[hits$index2] - sites$pos[hits$index1]) <= site_pad
-    
-    dplyr::tibble(
-            site=sites$site[hits$index1],
-            close_to_site=hits$close_to_site,
-            reads[hits$index2,]) |>
-        arrow::as_arrow_table() |>
-        dplyr::arrange(site, tail) |>
-        arrow::as_arrow_table()
+    scan_parquet(reads_filename, \(reads) {
+        # Associate reads with sites
+        left <- ifelse(sites$strand < 0,  site_pad,      site_upstrand)
+        right <- ifelse(sites$strand < 0, site_upstrand, site_pad)
+        hits <- tailquant:::find_overlaps(
+            sites$chr, sites$pos-left, sites$pos+right, sites$strand,
+            reads$chr, reads$pos, reads$pos, reads$strand)
+        
+        # If multiple hits, choose nearest to actual pos
+        hits$offset <- abs(reads$pos[hits$index2] - sites$pos[hits$index1])
+        #This was unexpectedly slow:
+        #hits <- dplyr::slice_min(hits, offset, n=1, by=index2, with_ties=FALSE)
+        #So:
+        hits <- dplyr::summarize(hits, index1=index1[which.min(offset)], .by=c(index2))
+        
+        hits$close_to_site <- abs(reads$pos[hits$index2] - sites$pos[hits$index1]) <= site_pad
+        
+        result <- dplyr::tibble(
+                site=sites$site[hits$index1],
+                close_to_site=hits$close_to_site,
+                reads[hits$index2,]) |>
+            dplyr::arrange(site, tail)
+        # Unfortunately we can't sort the whole file this way.
+        
+        yield(result)
+    })
 }
 
 #' Count tail lengths
@@ -227,10 +242,12 @@ count_umis <- function(sited_reads) {
     cumulation <- sited_reads |>
         dplyr::transmute(
             site = site,
-            weight = weight) |>
+            weight = weight,
+            multimapper = num_hits > 1) |>
         dplyr::summarise(
             n = sum(weight),
             n_read = dplyr::n(),
+            n_read_multimapper = sum(multimapper),
             .by = c(site)) |>
         dplyr::arrange(site) |>
         arrow::as_arrow_table()
@@ -254,24 +271,43 @@ combine_tail_counts <- function(tail_counts_list) {
             .by=c(site, tail))
 }
 
+#' @export
+combine_counts <- function(counts_list) {
+    counts_list <- ensure_list(counts_list)
+    
+    counts_list |>
+        purrr::map(dplyr::collect) |>
+        dplyr::bind_rows() |>
+        dplyr::summarise(
+            n=sum(as.numeric(n)),
+            n_read=sum(as.numeric(n_read)),
+            n_read_multimapper=sum(as.numeric(n_read_multimapper)),
+            .by=site)
+}
 
 #' @export
 calc_site_stats <- function(tq) {
     sites <- tq@sites
+    
     tail_counts <- combine_tail_counts(tq@samples$tail_counts)
     
     result <- tail_counts |>
         tidyr::nest(.by=site, .key="tail_counts") |>
         dplyr::mutate(
             km=purrr::map(tail_counts, calc_km, .progress=TRUE),
-            n_reads=purrr::map_dbl(tail_counts, \(df) sum(df$n_read_event)),
-            n=purrr::map_dbl(tail_counts, \(df) sum(df$n_event)),
-            n_died=purrr::map_dbl(tail_counts, \(df) sum(df$n_died)),
+            tail_n_read=purrr::map_dbl(tail_counts, \(df) sum(df$n_read_event)),
+            tail_n=purrr::map_dbl(tail_counts, \(df) sum(df$n_event)),
+            tail_n_died=purrr::map_dbl(tail_counts, \(df) sum(df$n_died)),
             tail10=purrr::map_dbl(km, km_quantile, 0.1),
             tail25=purrr::map_dbl(km, km_quantile, 0.25),
             tail50=purrr::map_dbl(km, km_quantile, 0.5),
             tail75=purrr::map_dbl(km, km_quantile, 0.75),
             tail90=purrr::map_dbl(km, km_quantile, 0.9))
+    
+    counts <- combine_counts(tq@samples$counts) |>
+        dplyr::select(site,all_n=n,all_n_read=n_read,all_n_read_multimapper=n_read_multimapper)
+    
+    result <- dplyr::full_join(result, counts, by="site")
     
     if (!is.null(sites)) {
         # Delete any existing results
@@ -280,8 +316,12 @@ calc_site_stats <- function(tq) {
         result <- sites |>
             dplyr::full_join(result, by="site") |>
             dplyr::mutate(
-                n=tidyr::replace_na(n,0), 
-                n_died=tidyr::replace_na(n_died,0))
+                all_n=tidyr::replace_na(all_n,0),
+                all_n_read=tidyr::replace_na(all_n_read,0),
+                all_n_read_multimapper=tidyr::replace_na(all_n_read_multimapper,0),
+                tail_n=tidyr::replace_na(tail_n,0), 
+                tail_n_read=tidyr::replace_na(tail_n_read,0), 
+                tail_n_died=tidyr::replace_na(tail_n_died,0))
     }
     
     result

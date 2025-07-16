@@ -8,3 +8,9 @@ ensure_list <- function(x) {
     x
 }
 
+
+# Save disk space and loading time for diagnostic plots
+compact_plot <- function(p) {
+    patchwork::wrap_elements(cowplot::as_grob(p))
+}
+

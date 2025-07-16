@@ -127,7 +127,8 @@ transcript_to_ranges <- function(gene_id, transcript_id, exons, cds, pad, extens
         extensions=extensions)
 }
 
-site_assigner <- function(gff_features, pad=10, extension=750, noncoding_prop=1/3) {
+
+gff_to_site_assigner <- function(gff_features, pad=10, extension=750, noncoding_prop=1/3) {
     # Convert GRanges to signed-position ranges, and ensure sorted by signed-start position.
     gff_features <- gff_features |>
         granges_to_sranges() |>
@@ -198,7 +199,7 @@ site_assigner <- function(gff_features, pad=10, extension=750, noncoding_prop=1/
 }
 
 
-assign_sites <- function(sites, assigner, gff) {
+sites_assign <- function(sites, assigner, gff) {
     gff <- as.data.frame(gff) |>
         dplyr::mutate(strand = strand_to_int(strand))
     assigner <- as.data.frame(assigner) |>
@@ -221,5 +222,48 @@ assign_sites <- function(sites, assigner, gff) {
         sites$gene_ids[[i1]] <- genes
     }
     
+    sites
+}
+
+
+#' @export
+sites_give_id <- function(sites) {
+    ## Name unassigned sites by position
+    
+    sites_unassigned <- dplyr::filter(sites, is.na(gene_id)) |>
+        dplyr::mutate(site = paste0(chr,":",pos,":",strand_to_char(strand)))
+    
+    ## Name assigned sites by gene symbol
+    
+    # Order by position
+    sites_assigned <- dplyr::filter(sites, !is.na(gene_id)) |> 
+        dplyr::arrange(chr, strand*pos)
+    
+    # Get gene ids and symbols
+    genes <- sites_assigned |>
+        dplyr::distinct(gene_id, name) |>
+        dplyr::mutate(name = ifelse(is.na(name), gene_id, name))
+    
+    assertthat::assert_that(length(unique(genes$gene_id)) == nrow(genes))
+    
+    # Rename symbols if non-unique
+    while(length(unique(genes$name)) < nrow(genes)) {
+        genes <- genes |>
+            dplyr::mutate(.by=name,
+                modified = (dplyr::n() > 1),
+                name = if (dplyr::n() > 1) paste0(name,"-",gene_id) else name)
+        warning("Renaming genes to deduplicate: ", paste(genes$name[genes$modified],collapse=" "))
+        genes$modified <- NULL
+    }
+    
+    # Name assigned sites with gene symbol and position number
+    sites_assigned <- sites_assigned |>
+        dplyr::left_join(dplyr::select(genes,gene_id,site=name), by="gene_id") |>
+        dplyr::mutate(.by=site,
+            site = paste0(site,":",dplyr::row_number(),"of",dplyr::n()))
+    
+    ## Combine and check uniqueness
+    sites <- dplyr::bind_rows(sites_assigned, sites_unassigned)
+    assertthat::assert_that(length(unique(sites$site)) == nrow(sites))
     sites
 }

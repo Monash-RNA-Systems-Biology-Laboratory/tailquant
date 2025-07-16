@@ -23,7 +23,7 @@ ingest_tt(
     in_dir="my_tail_tools_pipeline_dir",
     tail_source="tt", # Where to get tail lengths from. "tt" means from Tail Tools output.
     site_pad=10,      # (default) Reads alignments ending +/-10 bases of a site are examined.
-    min_tail=19,      # (default) Minimum "A"s to consider as having a poly(A) tail.
+    min_tail=13,      # (default) Minimum "A"s to consider as having a poly(A) tail.
     length_trim=10    # (default) poly(A) tail reaching within 10 bases of the end 
                       #           we treat as not having ended.
 )

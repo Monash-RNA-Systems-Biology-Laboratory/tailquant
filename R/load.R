@@ -120,23 +120,33 @@ load_read1_clips <- function(read_names, read_pairs_file) {
         dplyr::collect()
 }
 
-#' Load data from a Tail Tools sample directory 
+#' Load data from a BAM file 
 #'
-#' Load data from a Tail Tools sample directory. Information about genomic length and tail length is included. Multimappers are discarded. Only the 3' end position is kept.
+#' Load data from a BAM file. Information about genomic length and tail length is included. One alignment from each multimapping read is kept. Only the 3' end position is kept.
+#'
+#' Multimappers are detected using NH attribute, and there should be only one alignment that isn't flagged as a "secondary alignment". This is what STAR does by default. 
+#'
+#' Tail Tools BAM files don't require this "secondary alignment" filtering step, so it can and should be disabled in this case.
 #'
 #' @export
-load_tt_sample_into <- function(dest_filename, path, tail_source, read_pairs_file=NULL, limit=NA) {
-    bam_filename <- file.path(path, "alignments_filtered_sorted.bam")
+load_bam_into <- function(
+        dest_filename, bam_filename, 
+        tail_source, read_pairs_file=NULL, 
+        limit=NA, filter_secondary=TRUE) {
     
-    param <- Rsamtools::ScanBamParam(what=c("qname"), tag=c("NH"))
-    #bam_file <- Rsamtools::BamFile(bam_filename, yieldSize=limit)
-    #alignments <- GenomicAlignments::readGAlignments(bam_file, param=param) |>
+    assertthat::assert_that(file.exists(bam_filename))
+    
+    param <- Rsamtools::ScanBamParam(
+        what=c("qname"), 
+        tag=c("NH"),
+        flag=Rsamtools::scanBamFlag(isSecondaryAlignment=ifelse(filter_secondary,FALSE,NA)))
     
     yield <- local_write_parquet(dest_filename)
     yield(dplyr::tibble(
         chr=character(0),
         pos=integer(0),
         strand=integer(0),
+        num_hits=integer(0),
         length=numeric(0),
         tail_start=numeric(0),
         tail=numeric(0),
@@ -153,12 +163,12 @@ load_tt_sample_into <- function(dest_filename, path, tail_source, read_pairs_fil
                 GenomicRanges::resize(1, fix="end") |>
                 as.data.frame() |> 
                 dplyr::as_tibble() |>
-                dplyr::filter(NH == 1) |>
                 dplyr::transmute(
                     read=qname, 
                     chr=as.character(seqnames), 
                     pos=as.integer(start), 
-                    strand=strand_to_int(strand))
+                    strand=strand_to_int(strand),
+                    num_hits=NH)
             
             if (tail_source == "tt") {
                 clips <- load_tt_clips(path)
@@ -197,7 +207,7 @@ ingest_tt <- function(
         site_file=NULL,
         site_pad=10,
         site_upstrand=300,
-        min_tail=19,
+        min_tail=13,
         length_trim=10,
         limit=NA, # Max alignments to read per BAM file
         steps=1:7) {
@@ -236,10 +246,14 @@ ingest_tt <- function(
         message("Step 3: reads")
         ensure_dir(out_dir, "reads")
         parallel_walk(sample_names, \(sample) {
-            load_tt_sample_into(
+            bam_filename <- file.path(in_dir,"samples",sample,"alignments_filtered_sorted.bam")
+            load_bam_into(
                 file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
-                file.path(in_dir,"samples",sample),
-                tail_source=tail_source, read_pairs_file=read_pairs_file, limit=limit)
+                bam_filename,
+                tail_source=tail_source, 
+                read_pairs_file=read_pairs_file, 
+                limit=limit, 
+                filter_secondary=FALSE) # Tail Tools has already filtered to one alignment per read
             NULL
         })
     }
@@ -248,10 +262,12 @@ ingest_tt <- function(
         message("Step 4: sited_reads")
         ensure_dir(out_dir, "sited_reads")
         parallel_walk(sample_names, \(sample) {
-            sites <- load_parquet(out_dir,".","sites.parquet") |> dplyr::collect()
-            load_parquet(out_dir,"reads",sample,".reads.parquet") |>
-                site_reads(sites, site_pad=site_pad, site_upstrand=site_upstrand) |>
-                arrow::write_parquet(file.path(out_dir,"sited_reads",paste0(sample,".sited_reads.parquet")))
+            sites <- load_parquet(out_dir,".","sites.parquet")
+            site_reads_into(
+                file.path(out_dir,"sited_reads",paste0(sample,".sited_reads.parquet")),
+                file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
+                sites, site_pad=site_pad, site_upstrand=site_upstrand)
+            NULL
         })
     }
     
@@ -303,6 +319,13 @@ fix_column_names <- function(pq) {
 #' @export
 load_tq <- function(in_dir) {
     sites <- load_parquet(in_dir, ".", "sites.parquet")
+    # Backwards compatability
+    if ("n_reads" %in% names(sites))
+        sites <- dplyr::rename(sites, tail_n_read=n_reads)
+    if ("n" %in% names(sites))
+        sites <- dplyr::rename(sites, tail_n=n)
+    if ("n_died" %in% names(sites))
+        sites <- dplyr::rename(sites, tail_n_died=n_died)
     
     samples <- load_parquet(in_dir, ".", "samples.parquet") |> 
         dplyr::collect()

@@ -12,7 +12,7 @@ ingest_tt(
   site_file = NULL,
   site_pad = 10,
   site_upstrand = 300,
-  min_tail = 19,
+  min_tail = 13,
   length_trim = 10,
   limit = NA,
   steps = 1:7
