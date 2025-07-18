@@ -372,7 +372,8 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             n_reads=n_reads,
             n_tail_reads=purrr::map_dbl(df$tail_counts,\(item) 
                 if ("n_read_event" %in% names(item)) sum(item$n_read_event) else NA),
-            n_multimapper_reads)
+            n_multimapper_reads,
+            multimapping=n_multimapper_reads / n_reads)
         
         DT::datatable(
             result,
@@ -380,6 +381,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             options=list(pageLength=100)) |>
             DT::formatRound(c("cpm","n","n_tail","n_tail_ended","tail90","tail50","tail10"),1) |>
             DT::formatRound(c("n_reads","n_tail_reads","n_multimapper_reads"),0) |>
+            DT::formatRound(c("multimapping"),3) |>
             DT::formatStyle(
                 'cpm',
                 background = DT::styleColorBar(c(0,result$cpm)*1.1, '#aaaaff')) |>
@@ -387,9 +389,12 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
                 c("tail90","tail50","tail10"),
                 background = DT::styleColorBar(c(0,result$tail90,result$tail50,result$tail10)*1.1, "#aaffaa")) |>
             DT::formatStyle(
-                c("n","n_tail","n_tail_ended","n_reads","n_tail_reads","n_multimapper_reads"),
+                c("n","n_tail","n_tail_ended"),
                 background = DT::styleColorBar(
-                    c(0,result$n,result$n_tail,result$n_tail_ended,result$n_reads,result$n_tail_reads)*1.1, "#aaaaaa"))
+                    c(0,result$n,result$n_tail,result$n_tail_ended)*1.1, "#cccccc")) |>
+            DT::formatStyle(
+                c("multimapping"),
+                background = DT::styleColorBar(c(0,1.1), "#ffaaaa"))
     })
 }
 

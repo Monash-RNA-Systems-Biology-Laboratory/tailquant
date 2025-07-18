@@ -15,13 +15,18 @@ tq_shiny_ui <- function(tq, title, tests, max_tail=NA) {
         title=title,
         theme = bslib::bs_theme(bootswatch="cosmo"),
         navbar_options = bslib::navbar_options(bg="#ddffee"),
-        selected = "Sites",
+        selected = "Summary",
         bslib::nav_item("/"),
+        bslib::nav_panel(title="Summary", summary_ui(tq)),
         tests_panel,
         bslib::nav_panel(title="Sites", site_ui(tq, max_tail)))
 }
 
+
 tq_shiny_server <- function(input, output, session, tq, tests) {
+    
+    summary_server(tq)
+    
     if (!is.null(tests)) {
         test_get <- test_server(input, output, session, tq=tq, tests=tests)
     } else {

@@ -34,9 +34,9 @@ tq_get_cache <- function(tq, func, name=NA, version=NULL) {
     result
 }
 
-tq_cached <- function(name, func) {
+tq_cached <- function(name, func, version=NULL) {
     function(tq) {
-        tq_get_cache(tq, func=\() func(tq), name=name)
+        tq_get_cache(tq, func=\() func(tq), name=name, version=version)
     }
 }
 
@@ -130,6 +130,32 @@ tq_lib_sizes <- tq_cached("lib_sizes.qs2",\(tq) {
     dplyr::tibble(sample=colnames(counts), lib_size=colSums(counts))
 })
 
+
+#' @export
+tq_sample_stats <- tq_cached("sample_stats.qs2",version=3,\(tq) {
+    n <- tq_counts(tq) |> colSums()
+    n_tail <- tq_counts_tail(tq) |> colSums()
+    n_tail_ended <- tq_counts_tail_ended(tq) |> colSums()
+    n_read <- tq_counts_read(tq) |> colSums()
+    n_read_multimapper <- tq_counts_read_multimapper(tq) |> colSums()
+    
+    mean_tail <- purrr::map_dbl(tq@samples$tail_counts, \(tail_counts)
+        tail_counts |> 
+            dplyr::summarize(mean_tail=sum(tail*n_event)/sum(n_event)) |> 
+            dplyr::collect() |> 
+            dplyr::pull(mean_tail))
+    
+    dplyr::tibble(
+        sample=names(n),
+        n=n,
+        n_tail=n_tail,
+        n_tail_ended=n_tail_ended,
+        n_read=n_read,
+        n_read_multimapper=n_read_multimapper,
+        mean_tail=mean_tail,
+        reads_per_umi=n_read/n,
+        multimapping=n_read_multimapper/n_read)
+})
 
 #' Get matrix of proprtion of tails as long or longer than a certain length
 #'
