@@ -137,7 +137,12 @@ tq_sample_stats <- tq_cached("sample_stats.qs2",version=3,\(tq) {
     n_tail <- tq_counts_tail(tq) |> colSums()
     n_tail_ended <- tq_counts_tail_ended(tq) |> colSums()
     n_read <- tq_counts_read(tq) |> colSums()
-    n_read_multimapper <- tq_counts_read_multimapper(tq) |> colSums()
+    
+    # Backwards compatability
+    n_read_multimapper <- rep(NA, length(n))
+    try({
+        n_read_multimapper <- tq_counts_read_multimapper(tq) |> colSums()
+    }, silent=TRUE)
     
     mean_tail <- purrr::map_dbl(tq@samples$tail_counts, \(tail_counts)
         tail_counts |> 
