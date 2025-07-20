@@ -37,7 +37,6 @@ tq_shiny_server <- function(input, output, session, tq, tests) {
     
     shiny::observe({
         want <- test_get$sites_wanted()
-        print(want)
         if (length(want$name) == 1) {
             if (want$what == "genes")
                 query <- paste0("gene_id=^",stringr::str_escape(want$name),"$")

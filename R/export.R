@@ -10,6 +10,9 @@ tq_export <- function(tq, out_dir, samples=NULL) {
             dplyr::collect()
     }
     
+    samples <- samples |>
+        dplyr::left_join(tq_sample_stats(tq), by="sample")
+    
     sites <- tq@sites |>
         dplyr::select(site, location, chr, pos, strand, gene=gene_id, symbol=name, biotype, product) |>
         dplyr::collect() |>

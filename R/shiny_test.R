@@ -88,11 +88,11 @@ test_server <- function(input, output, session, tq, tests) {
             setdiff(c("n_present","rank",round_cols))
         
         DT::datatable(
-            df_show,
-            selection='single',
-            rownames=FALSE, #width="100%", 
-            #class='compact cell-border hover',
-            extensions='Buttons') |>
+                df_show,
+                selection='single',
+                rownames=FALSE,
+                options=list(pageLength=20)) |>
+            DT::formatStyle(names(df_show), lineHeight="100%", paddingTop="5px", paddingBottom="5px") |>
             DT::formatRound(round_cols, digits=digits) |>
             DT::formatSignif(signif_cols, digits=3)
     })

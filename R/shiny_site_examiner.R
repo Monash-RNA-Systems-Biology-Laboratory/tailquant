@@ -227,18 +227,18 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     output$table <- DT::renderDT(server=TRUE, {
         df_show <- dplyr::select(df(), !product)
         DT::datatable(
-            df_show,
-            selection='single',
-            rownames=FALSE, 
-            #width="100%", 
-            #class='compact cell-border hover',
-            #extensions='Buttons'
-            options=list(searching=FALSE)
-        ) |>
-          #DT::formatRound(c("tightness"),2) |>
-          DT::formatRound(c("n","tail_n","tail_n_ended"),0) |>
-          DT::formatRound(c("multimapping"),2) |>
-          DT::formatStyle(names(df_show), "white-space"="nowrap")
+                df_show,
+                selection='single',
+                rownames=FALSE, 
+                #width="100%", 
+                #class='compact cell-border hover',
+                #extensions='Buttons'
+                options=list(searching=FALSE)) |>
+            DT::formatStyle(names(df_show), lineHeight="100%", paddingTop="5px", paddingBottom="5px") |>
+            #DT::formatRound(c("tightness"),2) |>
+            DT::formatRound(c("n","tail_n","tail_n_ended"),0) |>
+            DT::formatRound(c("multimapping"),2) |>
+            DT::formatStyle(names(df_show), "white-space"="nowrap")
     })
     
     output$site_info <- shiny::renderUI({
@@ -379,6 +379,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             result,
             rownames=FALSE,
             options=list(pageLength=100)) |>
+            DT::formatStyle(names(result), lineHeight="100%", paddingTop="5px", paddingBottom="5px") |>
             DT::formatRound(c("cpm","n","n_tail","n_tail_ended","tail90","tail50","tail10"),1) |>
             DT::formatRound(c("n_reads","n_tail_reads","n_multimapper_reads"),0) |>
             DT::formatRound(c("multimapping"),3) |>

@@ -9,6 +9,7 @@ summary_ui <- function(tq) {
                 df,
                 rownames=FALSE,
                 options=list(pageLength=100)) |>
+            DT::formatStyle(names(df), lineHeight="100%", paddingTop="5px", paddingBottom="5px") |>
             DT::formatRound(c("n","n_tail","n_tail_ended","n_read","n_read_multimapper"), 0) |>
             DT::formatRound(c("mean_tail"), 1) |>
             DT::formatRound(c("reads_per_umi", "multimapping"), 3) |>
