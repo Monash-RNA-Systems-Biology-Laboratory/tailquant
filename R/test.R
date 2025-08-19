@@ -67,8 +67,8 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
 
 tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, title="a test") {
     check_design(tq, design)
-    weights <- tq_counts_tail_ended(tq)
-    tails <- tq_quantiles(tq, prop)
+    weights <- tq_counts_tail_ended(tq)[,rownames(design),drop=FALSE]
+    tails <- tq_quantiles(tq, prop)[,rownames(design),drop=FALSE]
     
     keep <- get_keep(weights, min_count, min_count_in, design)
     

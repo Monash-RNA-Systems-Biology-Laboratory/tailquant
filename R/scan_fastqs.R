@@ -26,7 +26,8 @@ scan_paired_chunks <- function(
     # Identify sample
     dists <- stringdist::stringdistmatrix(barcode, samples$barcode, method="hamming")
     sample_index <- apply(dists, 1, \(x) {
-        i <- which(x <= max_mismatch)
+        best <- min(x, max_mismatch)
+        i <- which(x <= best)
         if (length(i) != 1) NA else i
     })
     sample <- samples$sample[sample_index]
@@ -290,27 +291,48 @@ demux_reads <- function(
 
 #' Examine a random selection of reads
 #' @export
-reads_peek <- function(in_file, n=10, line_width=100, seed=563) {
+reads_peek <- function(in_file, n=100, line_width=1000, seed=563) {
     withr::local_seed(seed)
     
-    pq <- arrow::open_dataset(in_file) 
-    i <- sample(nrow(pq), min(n,nrow(pq)))
-    df <- pq[i,] |> collect()
+    pq <- arrow::ParquetFileReader$create(in_file, mmap=FALSE)
     
-    for(i in seq_len(nrow(df))) {
+    cat("
+This is a random selection of read pairs. For each read, the three lines are:
+
+1. Quality scores
+2. DNA Sequence
+3. tailquant base interpretation
+     b = barcode
+     u = umi
+     ^ = tail
+     - = any other sequence that passed quality clip
+
+")
+    
+    # Minor niggles:
+    # Samples without replacement.
+    # Samples a row group, and then samples from the row group.
+    for(nth in seq_len(n)) {
+        df <- local({
+            gr <- pq$ReadRowGroup( sample.int(pq$num_row_groups,1)-1 )
+            dplyr::collect(gr[ sample.int(nrow(gr),1), ])
+        })
+        gc()
+        
         cat(paste0(
             "\n\n\n",
-            "sample=", df$sample[i],
-            " A*",df$poly_a_length[i], " T*",df$poly_t_length[i],"\n\n"))
+            "Sample ", df$sample, ", ",
+            df$barcode_mismatches, " barcode mismatches, ",
+            "A*",df$poly_a_length, " T*",df$poly_t_length,"\n\n"))
         
         # Examine read 1
         
-        seq <- stringr::str_split_1(df$read_1_seq[i],"")
-        qual <- stringr::str_split_1(df$read_1_qual[i],"")
+        seq <- stringr::str_split_1(df$read_1_seq,"")
+        qual <- stringr::str_split_1(df$read_1_qual,"")
         ind <- seq_along(seq)
         anno <- rep("-", length(seq))
-        anno[ind > df$read_1_clip[i]] <- " "
-        anno[ind >= df$poly_a_start[i] & ind <= df$poly_a_start[i]+df$poly_a_length[i]-1] <- "^"
+        anno[ind > df$read_1_clip] <- " "
+        anno[ind >= df$poly_a_start & ind <= df$poly_a_start+df$poly_a_length-1] <- "^"
         
         cat("Read 1:\n")
         j <- 1
@@ -326,14 +348,14 @@ reads_peek <- function(in_file, n=10, line_width=100, seed=563) {
         
         # Examine read 2
         
-        seq <- stringr::str_split_1(df$read_2_seq[i],"")
-        qual <- stringr::str_split_1(df$read_2_qual[i],"")
+        seq <- stringr::str_split_1(df$read_2_seq,"")
+        qual <- stringr::str_split_1(df$read_2_qual,"")
         ind <- seq_along(seq)
         anno <- rep("-", length(seq))
         anno[ind <= 8] <- "b"
         anno[ind >= 9 & ind <= 18] <- "u"
-        anno[ind > df$read_2_clip[i]] <- " "
-        anno[ind >= df$poly_t_start[i] & ind <= df$poly_t_start[i]+df$poly_t_length[i]-1] <- "^"
+        anno[ind > df$read_2_clip] <- " "
+        anno[ind >= df$poly_t_start & ind <= df$poly_t_start+df$poly_t_length-1] <- "^"
         
         cat("Read 2:\n")
         j <- 1

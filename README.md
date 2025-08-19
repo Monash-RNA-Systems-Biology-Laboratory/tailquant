@@ -30,7 +30,7 @@ ingest_tt(
 
 # Open Shiny app
 tq <- load_tq("my_output_dir")
-shiny_site_examiner(tq, title="Tail length examiner for this dataset")
+tq_shiny(tq, title="Tail length examiner for this dataset")
 ```
 
 
