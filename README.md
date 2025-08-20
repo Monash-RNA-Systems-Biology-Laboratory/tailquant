@@ -56,7 +56,7 @@ future::plan(future::multicore, workers=6)
 # Ends of reads will be clipped at the point 1 in 5 non-G bases start falling below this quality.
 
 # Step 1 loads all of the read pairs into a parquet file, 
-# and calls samples, quality clipping poly(A) and poly(T) lengths
+# and calls samples, quality clipping, poly(A), and poly(T) lengths.
 ingest_read_pairs(
     out_file="reads.parquet",   # <- This file will be created
     reads1="reads1.fastq.gz",
@@ -69,7 +69,7 @@ demux_reads(
     out_dir="my_output_dir", 
     in_file="reads.parquet")
 
-# Optionally in step 2 you can filter by poly(T) length
+# Optionally in step 2 you can filter by poly(T) length.
 demux_reads(
     out_dir="my_output_dir", 
     in_file="reads.parquet",
@@ -85,3 +85,18 @@ reads_peek(
 `reads.parquet` contains the input reads, sample assignment, UMIs, and information about poly(A) and poly(T) lengths. This is a big file, so be sure to delete it once you are done with it.
 
 `demux_reads` produces fastq files suitable for Tail Tools. Tail Tools should be run with the clipping setting `adaptor="rc_umi_rc_barcode"`.
+
+The poly(T) lengths can be used when ingesting Tail Tools output:
+
+```r
+# Process an existing Tail Tools pipeline, but use poly(T) lengths.
+# Creates a new directory called my_output_dir
+ingest_tt(
+    out_dir="my_output_dir", 
+    in_dir="my_tail_tools_pipeline_dir",
+    tail_source="read2", # Where to get tail lengths from.
+    read_pairs_file="reads.parquet",
+    min_tail=13,      # (default) Minimum "T"s to consider as having a poly(A) tail.
+    length_trim=0     # poly(T) should be fine reaching to the end of read2.
+)
+```
