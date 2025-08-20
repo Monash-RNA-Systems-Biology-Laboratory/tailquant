@@ -77,7 +77,7 @@ scan_paired_chunks <- function(
 #'
 #' @export
 ingest_read_pairs <- function(
-        output_filename, reads1, reads2, 
+        out_file, reads1, reads2, 
         samples, max_mismatch=1,
         clip_quality_char="I", clip_penalty=4,
         poly_penalty=1000, suffix_penalty=4,
@@ -94,7 +94,7 @@ ingest_read_pairs <- function(
     r2 <- file(reads2, open="r")
     withr::defer(close(r2))
     
-    yield <- local_write_parquet(output_filename)
+    yield <- local_write_parquet(out_file)
     queue <- local_queue()
     
     withr::local_options(future.globals.maxSize=Inf)
@@ -161,6 +161,8 @@ ingest_read_pairs <- function(
 #'
 #' @param clip_min_length If clipped read is shorter than this, discard it.
 #'
+#' @param min_t If read 2 had a poly(T) length less than this in read 2, the read is discarded.
+#'
 #' @export
 demux_reads <- function(
         out_dir, 
@@ -169,6 +171,7 @@ demux_reads <- function(
         clip=FALSE,
         clip_min_untemplated=12,
         clip_min_length=20,
+        min_t=0,
         verbose=FALSE) {
     assertthat::assert_that(file.exists(in_file), msg="Input file doesn't exist.")
     
@@ -203,10 +206,13 @@ demux_reads <- function(
         scan_parquet(in_file, 
             columns=c(
                 "readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual",
-                "poly_a_length", "poly_a_suffix", "poly_a_start", "read_1_clip"), 
+                "poly_a_length", "poly_a_suffix", "poly_a_start", "read_1_clip",
+                "poly_t_length"), 
             callback=\(df) {
                 df <- df |>
-                    dplyr::filter(sample == .env$sample) |>
+                    dplyr::filter(
+                        sample == .env$sample,
+                        poly_t_length >= .env$min_t) |>
                     dplyr::mutate(
                         readname = paste0(readname, "_", barcode,"_", umi),
                         has_end  = poly_a_length+poly_a_suffix >= clip_min_untemplated,
@@ -215,7 +221,7 @@ demux_reads <- function(
                         keep = clip >= clip_min_length)
                 
                 total_reads <<- total_reads + nrow(df)
-                total_reads_kept <<- total_reads_kept +sum(df$keep)
+                total_reads_kept <<- total_reads_kept + sum(df$keep)
                 total_reads_ended <<- total_reads_tailed + sum(df$keep & df$has_end)
                 total_reads_tailed <<- total_reads_tailed + sum(df$keep & df$has_tail)
                 
@@ -291,10 +297,14 @@ demux_reads <- function(
 
 #' Examine a random selection of reads
 #' @export
-reads_peek <- function(in_file, n=100, line_width=1000, seed=563) {
+reads_peek <- function(in_file, n=100, line_width=1000, seed=563, out_file=NA) {
     withr::local_seed(seed)
     
     pq <- arrow::ParquetFileReader$create(in_file, mmap=FALSE)
+    
+    if (!is.na(out_file)) {
+        withr::local_output_sink(out_file)
+    }
     
     cat("
 This is a random selection of read pairs. For each read, the three lines are:
