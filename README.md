@@ -73,7 +73,7 @@ demux_reads(
 demux_reads(
     out_dir="my_output_dir", 
     in_file="reads.parquet",
-    min_t=12)
+    min_t=13)
 
 # You can examine tailquant's interpretation of a random selection of reads with:
 reads_peek(
