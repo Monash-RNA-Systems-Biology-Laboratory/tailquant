@@ -264,8 +264,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
         else
             p <- p + ggplot2::guides(color="none") + ggplot2::scale_color_discrete(type="black")
-            
-        print(p)
+        p
     })
     
     plot_server("density_plot", \() {
@@ -279,8 +278,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             p <- p + ggplot2::scale_color_discrete(type=selected_samples()$color)
         else
             p <- p + ggplot2::guides(color="none") + ggplot2::scale_color_discrete(type="black")
-        
-        print(p)
+        p
     })
     
     plot_server("ridgeline_plot", \() {
@@ -294,8 +292,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             p <- p + ggplot2::scale_fill_discrete(type=selected_samples()$color)
         else
             p <- p + ggplot2::scale_fill_discrete(type="black")
-        
-        print(p)
+        p
     })
     
     plot_server("density_heatmap", \() {
@@ -306,7 +303,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             normalize_max=FALSE,
             cpm=input$cpm && input$show_samples,
             lib_sizes=selected_samples()$lib_size)
-        print(p)
+        p
     })
     
     plot_server("detail_plot", \() {
@@ -314,9 +311,9 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
         #if (input$show_samples) {
         #    plots <- purrr::map2(selected_reads(), samples$sample, \(reads,name) 
         #        plot_tail_detail(reads) + ggplot2::labs(title=name))
-        #    patchwork::wrap_plots(plots, ncol=ceiling(sqrt(length(plots)))) |> print()
+        #    patchwork::wrap_plots(plots, ncol=ceiling(sqrt(length(plots))))
         #} else {
-            plot_tail_detail(selected_reads()) |> print()
+            plot_tail_detail(selected_reads())
         #}
     })
     
@@ -337,7 +334,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             min_tail=min_tail,
             max_tail=input$max_tail,
             step=input$step)
-        print(p)
+        p
     })
     
     output$read_counts <- DT::renderDT({

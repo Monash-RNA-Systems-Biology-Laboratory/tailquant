@@ -4,9 +4,11 @@ plot_ui <- function(id, width=800, height=600, ...) {
 
     shiny::tagList(
         shiny::div(
-            style="display: grid; grid-template-columns: auto auto 1fr; gap: 1em;",
-            shiny::numericInput(ns("width"), "Plot width", width, min=100, max=10000, step=50, width="6em"),
-            shiny::numericInput(ns("height"), "Plot height", height, min=100, max=10000, step=50, width="6em"),
+            style="display: grid; grid-template-columns: auto auto auto auto 1fr; gap: 1em;",
+            shiny::numericInput(ns("width"), "Plot width", width, min=100, max=10000, step=50, width="10em"),
+            shiny::numericInput(ns("height"), "Plot height", height, min=100, max=10000, step=50, width="10em"),
+            shiny::numericInput(ns("margin_left"), "Left margin (0-1)", NA, min=0,max=1,step=0.1, width="10em"),
+            shiny::numericInput(ns("margin_right"), "Right margin (0-1)", NA, min=0,max=1,step=0.1, width="10em"),
             shiny::div(shiny::tags$label("Download"), shiny::tags$br(),
                 shiny::downloadButton(ns("pdf"), "PDF"),
                 #shiny::downloadButton(ns("eps"), "EPS"),
@@ -19,10 +21,14 @@ plot_ui <- function(id, width=800, height=600, ...) {
 }
 
 plot_server <- function(id, callback, dlname="plot", dpi=96) { moduleServer(id, function(input, output, session) {
+    do_plot <- function() {
+        p <- callback() 
+        p <- plot_ensure_margin(p, left=input$margin_left, right=input$margin_right)
+        plot(p)
+    }
+    
     output$plot <- shiny::renderPlot(
-        { 
-            withProgress(callback(), message="Plotting", value=NA) 
-        },
+        withProgress({ do_plot() }, message="Plotting", value=NA),
         width=\() input$width,
         height=\() input$height,
         res=dpi
@@ -32,7 +38,7 @@ plot_server <- function(id, callback, dlname="plot", dpi=96) { moduleServer(id, 
         paste0(dlname,".pdf"),
         function(filename) {
             pdf(filename, width=input$width/dpi, height=input$height/dpi)
-            callback()
+            do_plot()
             dev.off()
         }
     )
@@ -42,7 +48,7 @@ plot_server <- function(id, callback, dlname="plot", dpi=96) { moduleServer(id, 
     #    function(filename) {
     #        postscript(filename, width=input$width/dpi, height=input$height/dpi,
     #                   paper="special", onefile=FALSE, horizontal=FALSE)
-    #        callback()
+    #        do_plot()
     #        dev.off()
     #    }
     #)
@@ -51,7 +57,7 @@ plot_server <- function(id, callback, dlname="plot", dpi=96) { moduleServer(id, 
         paste0(dlname,".svg"),
         function(filename) {
             svg(filename, width=input$width/dpi, height=input$height/dpi)
-            callback()
+            do_plot()
             dev.off()
         }
     )
@@ -60,7 +66,7 @@ plot_server <- function(id, callback, dlname="plot", dpi=96) { moduleServer(id, 
         paste0(dlname,".png"),
         function(filename) {
             png(filename, width=input$width*2, height=input$height*2, res=dpi*2)
-            callback()
+            do_plot()
             dev.off()
         }
     )
