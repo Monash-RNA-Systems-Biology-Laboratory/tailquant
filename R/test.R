@@ -32,10 +32,15 @@ get_keep <- function(counts, min_count, min_count_in, design=NULL) {
     keep
 }
 
-tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, title="a test") {
+tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, min_tail=NA, title="a test") {
     check_design(tq, design)
     
-    counts <- tq_counts(tq)
+    if (is.na(min_tail)) {
+        counts <- tq_counts(tq)
+    } else {
+        counts <- tq_counts_tail_at_least(tq, min_tail)
+    }
+    
     counts <- counts[,rownames(design),drop=FALSE]
     
     keep <- get_keep(counts, min_count, min_count_in)
@@ -46,7 +51,10 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
     voomed <- limma::voom(dge, design=design)
     
     result <- weitrix::weitrix_confects(voomed, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
-    result$title <- paste0("Differential expression: ", title)
+    result$title <- paste0(
+        "Differential expression",
+        if (!is.na(min_tail)) paste0(", tail at least ", min_tail) else "",
+        ": ", title)
     result$what <- "sites"
     
     sites <- tq@sites |>
@@ -150,6 +158,18 @@ test_types <- list(
     "expression" = list(
         title="Site expression",
         func=tq_test_expression, 
+        version=4),
+    "expression13" = list(
+        title="Site expression, tail of at least 13",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=13, ...), 
+        version=4),
+    "expression20" = list(
+        title="Site expression, tail of at least 20",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=20, ...), 
+        version=4),
+    "expression30" = list(
+        title="Site expression, tail of at least 30",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=30, ...), 
         version=4),
     "shift" = list(
         title="End shift",

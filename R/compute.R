@@ -111,6 +111,14 @@ tq_counts_tail <- tq_cached("counts_tail.qs2",\(tq) {
 })
 
 #' @export
+tq_counts_tail_at_least <- function(tq, tail_min=0) {
+    name <- paste0("counts_tail_at_least_",tail_min,".qs2")
+    tq_get_cache(tq, name=name, \() {
+        tail_count_helper(tq, "n_event", tail_min=tail_min)
+    })
+}
+
+#' @export
 tq_counts_tail_ended <- tq_cached("counts_tail_ended.qs2",\(tq) {
     tail_count_helper(tq, "n_died")
 })
@@ -122,6 +130,7 @@ tq_counts_tail_ended_in_range <- function(tq, tail_min=0, tail_max=Inf) {
         tail_count_helper(tq, "n_died", tail_min, tail_max)
     })
 }
+
 
 #' @export
 tq_lib_sizes <- tq_cached("lib_sizes.qs2",\(tq) {

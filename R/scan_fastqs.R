@@ -1,5 +1,9 @@
 
 ensure_samples <- function(samples) {
+    if (is.null(samples)) {
+        samples <- tibble::tibble(sample=character(0), barcode=character(0))
+    }
+    
     samples |>
         tibble::as_tibble() |>
         dplyr::select(sample, barcode)
@@ -12,6 +16,7 @@ scan_paired_chunks <- function(
         poly_penalty, suffix_penalty) {
     n <- length(chunk1) %/% 4
     i <- seq_len(n)
+    
     readnames1 <- stringr::str_match(chunk1[(i-1)*4+1], "@(\\S*)")[,2]
     readnames2 <- stringr::str_match(chunk2[(i-1)*4+1], "@(\\S*)")[,2]
     assertthat::assert_that(identical(readnames1, readnames2))
@@ -23,16 +28,21 @@ scan_paired_chunks <- function(
     barcode <- substr(seq2, 1, 8)
     umi <- substr(seq2, 9, 18)
     
-    # Identify sample
-    dists <- stringdist::stringdistmatrix(barcode, samples$barcode, method="hamming")
-    sample_index <- apply(dists, 1, \(x) {
-        best <- min(x, max_mismatch)
-        i <- which(x <= best)
-        if (length(i) != 1) NA else i
-    })
-    sample <- samples$sample[sample_index]
-    barcode_mismatches <- purrr::imap_dbl(sample_index, \(index,i) 
-        if (is.na(index)) NA else dists[i,index])
+    if (nrow(samples) == 0) {
+        sample <- rep(NA_character_, n)
+        barcode_mismatches <- rep(NA_real_, n)
+    } else {
+        # Identify sample
+        dists <- stringdist::stringdistmatrix(barcode, samples$barcode, method="hamming")
+        sample_index <- apply(dists, 1, \(x) {
+            best <- min(x, max_mismatch)
+            i <- which(x <= best)
+            if (length(i) != 1) NA else i
+        })
+        sample <- samples$sample[sample_index]
+        barcode_mismatches <- purrr::imap_dbl(sample_index, \(index,i) 
+            if (is.na(index)) NA else dists[i,index])
+    }
     
     # Identify poly(A) and poly(T) sequence
     suffix <- paste0(barcode,umi) |>
@@ -75,24 +85,39 @@ scan_paired_chunks <- function(
 
 #' Initial loading and processing of Pooled PAT-Seq data into a parquet file
 #'
+#' Extract barcodes, UMIs, clipping information and poly(A)/poly(T) lengths, producing a large parquet file.
+#'
+#' For subsampling, the seqtk command-line tool must be installed.
+#'
 #' @export
 ingest_read_pairs <- function(
         out_file, reads1, reads2, 
-        samples, max_mismatch=1,
+        samples=NULL, 
+        max_mismatch=1,
         clip_quality_char="I", clip_penalty=4,
         poly_penalty=1000, suffix_penalty=4,
-        limit=Inf) {
+        limit=Inf, subsample=1, seed=563) {
     
     # Check/convert arguments
     samples <- ensure_samples(samples)
     
+    assertthat::assert_that(subsample >= 0.0 && subsample <= 1)
+    
     # Begin
     
     cli::cli_progress_bar(format="Scanning read pairs | {scales::comma(cli::pb_current)} done | {scales::comma(cli::pb_rate_raw*60)}/m | {cli::pb_elapsed}")
-    r1 <- file(reads1, open="r")
-    withr::defer(close(r1))
-    r2 <- file(reads2, open="r")
-    withr::defer(close(r2))
+    
+    if (subsample >= 1) {
+        r1 <- file(reads1, open="r")
+        withr::defer(close(r1))
+        r2 <- file(reads2, open="r")
+        withr::defer(close(r2))
+    } else {
+        r1 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads1)," ",subsample), "r")
+        withr::defer(close(r1))
+        r2 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads2)," ",subsample), "r")
+        withr::defer(close(r2))
+    }
     
     yield <- local_write_parquet(out_file)
     queue <- local_queue()
@@ -127,6 +152,7 @@ ingest_read_pairs <- function(
         chunk1 <- readLines(r1, n=lines_to_read)
         chunk2 <- readLines(r2, n=lines_to_read)
         stopifnot(length(chunk1) == length(chunk2))
+        
         n <- length(chunk1) %/% 4
         total <- total+n
         if (n == 0) break
@@ -297,7 +323,7 @@ demux_reads <- function(
 
 #' Examine a random selection of reads
 #' @export
-reads_peek <- function(in_file, n=100, line_width=1000, seed=563, out_file=NA) {
+reads_peek <- function(in_file, n=100, line_width=120, seed=563, out_file=NA) {
     withr::local_seed(seed)
     
     pq <- arrow::ParquetFileReader$create(in_file, mmap=FALSE)
@@ -313,8 +339,9 @@ This is a random selection of read pairs. For each read, the three lines are:
 2. DNA Sequence
 3. tailquant base interpretation
      b = barcode
-     u = umi
+     u = UMI
      ^ = tail
+     s = suffix (UMI and barcode following tail) 
      - = any other sequence that passed quality clip
 
 ")
@@ -343,6 +370,8 @@ This is a random selection of read pairs. For each read, the three lines are:
         anno <- rep("-", length(seq))
         anno[ind > df$read_1_clip] <- " "
         anno[ind >= df$poly_a_start & ind <= df$poly_a_start+df$poly_a_length-1] <- "^"
+        anno[ind >= df$poly_a_start+df$poly_a_length &
+             ind <= df$poly_a_start+df$poly_a_length+df$poly_a_suffix-1] <- "s"
         
         cat("Read 1:\n")
         j <- 1
@@ -362,9 +391,9 @@ This is a random selection of read pairs. For each read, the three lines are:
         qual <- stringr::str_split_1(df$read_2_qual,"")
         ind <- seq_along(seq)
         anno <- rep("-", length(seq))
+        anno[ind > df$read_2_clip] <- " "
         anno[ind <= 8] <- "b"
         anno[ind >= 9 & ind <= 18] <- "u"
-        anno[ind > df$read_2_clip] <- " "
         anno[ind >= df$poly_t_start & ind <= df$poly_t_start+df$poly_t_length-1] <- "^"
         
         cat("Read 2:\n")
