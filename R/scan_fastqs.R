@@ -91,7 +91,7 @@ scan_paired_chunks <- function(
 #'
 #' @export
 ingest_read_pairs <- function(
-        out_file, reads1, reads2, 
+        out_prefix, reads1, reads2, 
         samples=NULL, 
         max_mismatch=1,
         clip_quality_char="I", clip_penalty=4,
@@ -103,71 +103,78 @@ ingest_read_pairs <- function(
     
     assertthat::assert_that(subsample >= 0.0 && subsample <= 1)
     
+    out_file <- paste0(out_prefix, ".parquet")
+    
     # Begin
-    
-    cli::cli_progress_bar(format="Scanning read pairs | {scales::comma(cli::pb_current)} done | {scales::comma(cli::pb_rate_raw*60)}/m | {cli::pb_elapsed}")
-    
-    if (subsample >= 1) {
-        r1 <- file(reads1, open="r")
-        withr::defer(close(r1))
-        r2 <- file(reads2, open="r")
-        withr::defer(close(r2))
-    } else {
-        r1 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads1)," ",subsample), "r")
-        withr::defer(close(r1))
-        r2 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads2)," ",subsample), "r")
-        withr::defer(close(r2))
-    }
-    
-    yield <- local_write_parquet(out_file)
-    queue <- local_queue()
-    
-    withr::local_options(future.globals.maxSize=Inf)
-    
-    # Configure schema
-    yield(tibble::tibble(
-        readname=character(0),
-        sample=character(0),
-        barcode=character(0),
-        barcode_mismatches=numeric(0), 
-        umi=character(0),
-        read_1_seq=character(0),
-        read_1_qual=character(0),
-        read_1_length=numeric(0),
-        read_1_clip=numeric(0),
-        poly_a_start=numeric(0),
-        poly_a_length=numeric(0),
-        poly_a_suffix=numeric(0),
-        read_2_seq=character(0),
-        read_2_qual=character(0),
-        read_2_length=numeric(0),
-        read_2_clip=numeric(0),
-        poly_t_start=numeric(0),
-        poly_t_length=numeric(0)))
-    
-    chunk <- 2e5
-    total <- 0
-    repeat {
-        lines_to_read <- 4*max(0, min(chunk, limit-total))
-        chunk1 <- readLines(r1, n=lines_to_read)
-        chunk2 <- readLines(r2, n=lines_to_read)
-        stopifnot(length(chunk1) == length(chunk2))
+    local({
+        cli::cli_progress_bar(format="Scanning read pairs | {scales::comma(cli::pb_current)} done | {scales::comma(cli::pb_rate_raw*60)}/m | {cli::pb_elapsed}")
         
-        n <- length(chunk1) %/% 4
-        total <- total+n
-        if (n == 0) break
+        if (subsample >= 1) {
+            r1 <- file(reads1, open="r")
+            withr::defer(close(r1))
+            r2 <- file(reads2, open="r")
+            withr::defer(close(r2))
+        } else {
+            r1 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads1)," ",subsample), "r")
+            withr::defer(close(r1))
+            r2 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads2)," ",subsample), "r")
+            withr::defer(close(r2))
+        }
         
-        cli::cli_progress_update(n)
+        yield <- local_write_parquet(out_file)
+        queue <- local_queue()
         
-        future_result <- future::future(
-            scan_paired_chunks(
-                chunk1, chunk2, 
-                samples=samples, max_mismatch=max_mismatch,
-                clip_quality_char=clip_quality_char, clip_penalty=clip_penalty,
-                poly_penalty=poly_penalty, suffix_penalty=suffix_penalty), 
-            seed=NULL)
-        queue(\(item) yield(future::value(item)), future_result)
-    }
+        withr::local_options(future.globals.maxSize=Inf)
+        
+        # Configure schema
+        yield(tibble::tibble(
+            readname=character(0),
+            sample=character(0),
+            barcode=character(0),
+            barcode_mismatches=numeric(0), 
+            umi=character(0),
+            read_1_seq=character(0),
+            read_1_qual=character(0),
+            read_1_length=numeric(0),
+            read_1_clip=numeric(0),
+            poly_a_start=numeric(0),
+            poly_a_length=numeric(0),
+            poly_a_suffix=numeric(0),
+            read_2_seq=character(0),
+            read_2_qual=character(0),
+            read_2_length=numeric(0),
+            read_2_clip=numeric(0),
+            poly_t_start=numeric(0),
+            poly_t_length=numeric(0)))
+        
+        chunk <- 2e5
+        total <- 0
+        repeat {
+            lines_to_read <- 4*max(0, min(chunk, limit-total))
+            chunk1 <- readLines(r1, n=lines_to_read)
+            chunk2 <- readLines(r2, n=lines_to_read)
+            stopifnot(length(chunk1) == length(chunk2))
+            
+            n <- length(chunk1) %/% 4
+            total <- total+n
+            if (n == 0) break
+            
+            cli::cli_progress_update(n)
+            
+            future_result <- future::future(
+                scan_paired_chunks(
+                    chunk1, chunk2, 
+                    samples=samples, max_mismatch=max_mismatch,
+                    clip_quality_char=clip_quality_char, clip_penalty=clip_penalty,
+                    poly_penalty=poly_penalty, suffix_penalty=suffix_penalty), 
+                seed=NULL)
+            queue(\(item) yield(future::value(item)), future_result)
+        }
+    })
+    
+    # Generate some diagnostic files
+    reads_peek(in_file=out_file, out_file=paste0(out_prefix,".peek.txt"))
+    reads_report(in_file=out_file, out_file=paste0(out_prefix,".report.html"))
 }
 
 
@@ -408,4 +415,24 @@ This is a random selection of read pairs. For each read, the three lines are:
             j <- k+1
         }
     }
+}
+
+
+#' Reads report
+#'
+#' Generate an HTML report for a parquet file produced by \code{ingest_reads()}.
+#'
+#' @export
+reads_report <- function(in_file, out_file=paste0(in_file,".report.html")) {
+    tmp <- withr::local_tempdir()
+    params <- list(in_file=in_file, wd=getwd())
+    out_dir <- dirname(out_file)
+    
+    rmarkdown::render(
+        system.file("rmd","reads_report.Rmd", package="tailquant"),
+        intermediates_dir = tmp,
+        output_dir = out_dir,
+        output_file = out_file,
+        params = params,
+        envir = new.env())
 }

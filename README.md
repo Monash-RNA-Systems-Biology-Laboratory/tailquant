@@ -58,11 +58,13 @@ future::plan(future::multicore, workers=6)
 # Step 1 loads all of the read pairs into a parquet file, 
 # and calls samples, quality clipping, poly(A), and poly(T) lengths.
 ingest_read_pairs(
-    out_file="reads.parquet",   # <- This file will be created
+    out_prefix="reads",   # <- A file called reads.parquet will be created
     reads1="reads1.fastq.gz",
     reads2="reads2.fastq.gz",
     clip_quality_char="I", # <- Check this is appropriate
     samples=samples)
+
+# You can now examine reads.peek.txt and reads.report.html to assess quality.
 
 # Step 2 produces demultiplexed fastq files from the parquet file.
 demux_reads(
@@ -74,15 +76,11 @@ demux_reads(
     out_dir="my_output_dir", 
     in_file="reads.parquet",
     min_t=13)
-
-# You can examine tailquant's interpretation of a random selection of reads with:
-reads_peek(
-    in_file="reads.parquet",
-    out_file="peek.txt")
-
 ```
 
 `reads.parquet` contains the input reads, sample assignment, UMIs, and information about poly(A) and poly(T) lengths. This is a big file, so be sure to delete it once you are done with it.
+
+`reads.peek.txt` shows a random selection of reads, and tailquant's interpretation of where the poly(A) and poly(T) tails are. `reads.report.html` is an HTML report giving a summary of tail identification, sample assignment, and UMI usage.
 
 `demux_reads` produces fastq files suitable for Tail Tools. Tail Tools should be run with the clipping setting `adaptor="rc_umi_rc_barcode"`.
 

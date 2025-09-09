@@ -4,7 +4,7 @@
 \alias{reads_peek}
 \title{Examine a random selection of reads}
 \usage{
-reads_peek(in_file, n = 10, line_width = 100, seed = 563)
+reads_peek(in_file, n = 100, line_width = 120, seed = 563, out_file = NA)
 }
 \description{
 Examine a random selection of reads

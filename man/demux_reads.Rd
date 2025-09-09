@@ -11,6 +11,7 @@ demux_reads(
   clip = FALSE,
   clip_min_untemplated = 12,
   clip_min_length = 20,
+  min_t = 0,
   verbose = FALSE
 )
 }
@@ -24,6 +25,8 @@ demux_reads(
 \item{clip_min_untemplated}{If clipping and a poly(A) tail plus expected suffix bases (UMI, barcode) was detected with at least this length, clip to this length. Otherwise clip at end of good quality region.}
 
 \item{clip_min_length}{If clipped read is shorter than this, discard it.}
+
+\item{min_t}{If read 2 had a poly(T) length less than this in read 2, the read is discarded.}
 }
 \description{
 Output read-1s into one FASTQ file per sample. Optionally clip off at poly(A) tail or low quality region. Read names have UMI and barcode appended.

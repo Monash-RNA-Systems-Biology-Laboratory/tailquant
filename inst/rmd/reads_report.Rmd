@@ -1,0 +1,91 @@
+---
+params:
+    in_file: "input.parquet"
+    wd: "."
+output:
+    html_document:
+        code_folding: hide
+        toc: true
+        toc_floating: true
+        self_contained: true
+title: "`r basename(params$in_file)`"
+---
+
+```{r echo=F}
+knitr::opts_knit$set(root.dir=params$wd)
+knitr::opts_chunk$set(dpi=100, fig.width=6, fig.height=4)
+```
+
+```{r results="asis"}
+pq <- arrow::open_dataset(params$in_file)
+
+n <- nrow(pq)
+
+stats <- pq |>
+    dplyr::summarize(
+        have_sample = sum(!is.na(sample)),
+        have_end = sum(!is.na(sample) & poly_a_length + poly_a_suffix >= 12)) |>
+    dplyr::collect()    
+
+a_lengths <- pq |>
+    dplyr::filter(!is.na(sample), poly_a_length + poly_a_suffix >= 12) |>
+    dplyr::count(poly_a_length) |>
+    dplyr::collect()
+
+t_lengths <- pq |>
+    dplyr::filter(!is.na(sample)) |>
+    dplyr::count(poly_t_length) |>
+    dplyr::collect()
+
+a_long <- sum(a_lengths$n[a_lengths$poly_a_length >= 13]) / sum(a_lengths$n)
+t_long <- sum(t_lengths$n[t_lengths$poly_t_length >= 13]) / sum(t_lengths$n)
+
+cat(paste0(
+    '\n\n<div style="font-size: 150%">\n\n',
+    scales::comma(nrow(pq)), " read pairs.\n\n",
+    scales::comma(stats$have_sample), 
+    " (", scales::percent(stats$have_sample/n, accuracy=0.1), ") ",
+    "of these were assigned to a sample.\n\n",
+    scales::comma(stats$have_end), 
+    " (", scales::percent(stats$have_end/stats$have_sample, accuracy=0.1), ") ",
+    " of these had the end of the genomic sequence identified within read 1.\n\n",
+    scales::percent(a_long, accuracy=0.1), " poly(A) of 13 bases or longer in read 1.\n\n",
+    scales::percent(t_long, accuracy=0.1), " poly(T) of 13 bases or longer in read 2.\n\n",
+    "\n\n</div>\n\n"))
+
+max_tail <- max(a_lengths$poly_a_length, t_lengths$poly_t_length)
+
+ggplot2::ggplot(a_lengths) +
+    ggplot2::aes(x=poly_a_length, y=n) +
+    ggplot2::geom_col(width=1) +
+    ggplot2::labs(x="poly(A) length", title="poly(A) length in read 1") +
+    ggplot2::coord_cartesian(xlim=c(0, max_tail)) +
+    ggplot2::theme_bw()
+
+ggplot2::ggplot(t_lengths) +
+    ggplot2::aes(x=poly_t_length, y=n) +
+    ggplot2::geom_col(width=1) +
+    ggplot2::labs(x="poly(T) length", title="poly(T) length in read 2") +
+    ggplot2::coord_cartesian(xlim=c(0, max_tail)) +
+    ggplot2::theme_bw()
+```
+
+## Commonest barcodes
+
+```{r}
+pq |>
+    dplyr::count(sample, barcode_mismatches, barcode) |>
+    dplyr::arrange(-n) |>
+    dplyr::slice_head(n=200) |>
+    knitr::kable()
+```
+
+## Commonest UMIs
+
+```{r}
+pq |>
+    dplyr::count(umi) |>
+    dplyr::arrange(-n) |>
+    dplyr::slice_head(n=200) |>
+    knitr::kable()
+```

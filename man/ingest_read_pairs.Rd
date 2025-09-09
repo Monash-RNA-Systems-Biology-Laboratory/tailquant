@@ -5,18 +5,23 @@
 \title{Initial loading and processing of Pooled PAT-Seq data into a parquet file}
 \usage{
 ingest_read_pairs(
-  output_filename,
+  out_prefix,
   reads1,
   reads2,
-  samples,
+  samples = NULL,
   max_mismatch = 1,
   clip_quality_char = "I",
   clip_penalty = 4,
   poly_penalty = 1000,
   suffix_penalty = 4,
-  limit = Inf
+  limit = Inf,
+  subsample = 1,
+  seed = 563
 )
 }
 \description{
-Initial loading and processing of Pooled PAT-Seq data into a parquet file
+Extract barcodes, UMIs, clipping information and poly(A)/poly(T) lengths, producing a large parquet file.
+}
+\details{
+For subsampling, the seqtk command-line tool must be installed.
 }
