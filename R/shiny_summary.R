@@ -24,5 +24,5 @@ summary_ui <- function(tq) {
 }
 
 
-summary_server <- function(tq) {
+summary_server <- function(input, output, session, tq) {
 }

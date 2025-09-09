@@ -18,6 +18,7 @@ tq_shiny_ui <- function(tq, title, tests, max_tail=NA) {
         selected = "Summary",
         bslib::nav_item("/"),
         bslib::nav_panel(title="Summary", summary_ui(tq)),
+        bslib::nav_panel(title="QC & Exploration", explore_ui(tq)),
         tests_panel,
         bslib::nav_panel(title="Sites", site_ui(tq, max_tail)))
 }
@@ -25,7 +26,9 @@ tq_shiny_ui <- function(tq, title, tests, max_tail=NA) {
 
 tq_shiny_server <- function(input, output, session, tq, tests) {
     
-    summary_server(tq)
+    summary_server(input, output, session, tq=tq)
+    
+    explore_server(input, output, session, tq=tq)
     
     if (!is.null(tests)) {
         test_get <- test_server(input, output, session, tq=tq, tests=tests)
