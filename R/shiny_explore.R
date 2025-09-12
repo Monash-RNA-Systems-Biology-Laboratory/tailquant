@@ -12,6 +12,8 @@ rle_frame <- function(mat) {
 explore_ui <- function(tq) {
     
     configure <- shiny::tagList(
+        shiny::p(),
+        shiny::checkboxInput("explore_genes", "Aggregate to genes", value=FALSE),
         shiny::numericInput("explore_tail_min", "Use reads with tail length at least", value=NA, min=13, step=1),
         shiny::numericInput("explore_const", "Constant in log2(CPM+constant)", value=1, min=0, step=0.5),
         shiny::numericInput("explore_n", "Sites to show in heatmap", value=50, min=10, max=1000, step=10))
@@ -19,7 +21,8 @@ explore_ui <- function(tq) {
     bslib::navset_underline(
         header=shiny::p(),
         bslib::nav_panel("Configure", configure),
-        bslib::nav_panel("Heatmap", plot_ui("explore_heatmap", width=1000, height=800, margin_controls=FALSE)),
+        bslib::nav_panel("Biplot", plot_ui("explore_biplot", width=1000, height=600, margin_controls=FALSE)),
+        bslib::nav_panel("Heatmap", plot_ui("explore_heatmap", width=1000, height=1000, margin_controls=FALSE)),
         bslib::nav_panel("RLE plot", plot_ui("explore_rle", width=1000, height=600, margin_controls=FALSE)),
         bslib::nav_panel("Sample vs median plot", plot_ui("explore_sample_median", width=1000, height=600, margin_controls=FALSE)))
 }
@@ -33,6 +36,21 @@ explore_server <- function(input, output, session, tq) {
         }
     })
     
+    naming <- reactive({
+        if (input$explore_genes) {
+            genes <- tq_genes(tq)
+            result <- ifelse(is.na(genes$name), genes$gene_id, genes$name)
+            names(result) <- genes$gene_id
+        } else {
+            df <- tq@sites |>
+                dplyr::select(site, name) |>
+                dplyr::collect()
+            result <- ifelse(is.na(df$name), df$site, paste0(df$name, " (",df$site,")"))
+            names(result) <- df$site
+        }
+        result
+    })
+    
     units <- reactive({ 
         paste0("log2(CPM+",input$explore_const,")") 
     })
@@ -43,7 +61,21 @@ explore_server <- function(input, output, session, tq) {
         } else {
             counts <- tq_counts(tq)
         }
-        log2(edgeR::cpm(counts) + input$explore_const)
+        
+        if (input$explore_genes) {
+            counts <- counts_genesums(counts, tq)
+        }
+        
+        dge <- edgeR::DGEList(counts)
+        dge <- edgeR::calcNormFactors(dge)
+        
+        result <- log2(edgeR::cpm(dge) + input$explore_const)
+        rownames(result) <- naming()[ rownames(result) ]
+        result
+    })
+    
+    plot_server("explore_biplot", \() {
+        varistran::plot_biplot(lcpm())
     })
     
     plot_server("explore_heatmap", \() {

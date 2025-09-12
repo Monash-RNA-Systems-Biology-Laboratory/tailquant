@@ -5,8 +5,6 @@ params:
 output:
     html_document:
         code_folding: hide
-        toc: true
-        toc_floating: true
         self_contained: true
 title: "`r basename(params$in_file)`"
 ---
@@ -41,7 +39,7 @@ a_long <- sum(a_lengths$n[a_lengths$poly_a_length >= 13]) / sum(a_lengths$n)
 t_long <- sum(t_lengths$n[t_lengths$poly_t_length >= 13]) / sum(t_lengths$n)
 
 cat(paste0(
-    '\n\n<div style="font-size: 150%">\n\n',
+    '\n\n<div style="font-size: 120%">\n\n',
     scales::comma(nrow(pq)), " read pairs.\n\n",
     scales::comma(stats$have_sample), 
     " (", scales::percent(stats$have_sample/n, accuracy=0.1), ") ",
@@ -49,17 +47,22 @@ cat(paste0(
     scales::comma(stats$have_end), 
     " (", scales::percent(stats$have_end/stats$have_sample, accuracy=0.1), ") ",
     " of these had the end of the genomic sequence identified within read 1.\n\n",
-    scales::percent(a_long, accuracy=0.1), " poly(A) of 13 bases or longer in read 1.\n\n",
-    scales::percent(t_long, accuracy=0.1), " poly(T) of 13 bases or longer in read 2.\n\n",
+    scales::percent(a_long, accuracy=0.1), " poly(A) of 13 bases or longer in read 1 (among reads with identified sample and end of genomic sequence).\n\n",
+    scales::percent(t_long, accuracy=0.1), " poly(T) of 13 bases or longer in read 2 (among reads with identified sample).\n\n",
     "\n\n</div>\n\n"))
 
 max_tail <- max(a_lengths$poly_a_length, t_lengths$poly_t_length)
+
+breaks <- c(0, 12)
+i <- 25
+while(i <= max_tail) { breaks <- c(breaks, i); i <- i + 25 }
 
 ggplot2::ggplot(a_lengths) +
     ggplot2::aes(x=poly_a_length, y=n) +
     ggplot2::geom_col(width=1) +
     ggplot2::labs(x="poly(A) length", title="poly(A) length in read 1") +
     ggplot2::coord_cartesian(xlim=c(0, max_tail)) +
+    ggplot2::scale_x_continuous(breaks=breaks, minor_breaks=NULL) +
     ggplot2::theme_bw()
 
 ggplot2::ggplot(t_lengths) +
@@ -67,25 +70,38 @@ ggplot2::ggplot(t_lengths) +
     ggplot2::geom_col(width=1) +
     ggplot2::labs(x="poly(T) length", title="poly(T) length in read 2") +
     ggplot2::coord_cartesian(xlim=c(0, max_tail)) +
+    ggplot2::scale_x_continuous(breaks=breaks, minor_breaks=NULL) +
     ggplot2::theme_bw()
 ```
 
-## Commonest barcodes
+## Most common barcodes
 
 ```{r}
 pq |>
     dplyr::count(sample, barcode_mismatches, barcode) |>
+    dplyr::mutate(proportion = n/sum(n)) |>
     dplyr::arrange(-n) |>
     dplyr::slice_head(n=200) |>
-    knitr::kable()
+    knitr::kable(digits=6)
 ```
 
-## Commonest UMIs
+## Most common UMIs
 
-```{r}
-pq |>
+```{r results="asis"}
+umis <- pq |>
+    dplyr::filter(!is.na(sample)) |>
     dplyr::count(umi) |>
+    dplyr::mutate(proportion = n/sum(n)) |>
     dplyr::arrange(-n) |>
+    dplyr::collect()
+
+entropy <- -sum(umis$proportion*log2(umis$proportion))
+
+cat(paste0(
+    scales::comma(nrow(umis)), " distinct UMIs seen.\n\n",
+    scales::number(entropy,accuracy=0.1,big.mark=","), " bits of Shannon entropy.\n\n"))
+
+umis |>
     dplyr::slice_head(n=200) |>
-    knitr::kable()
+    knitr::kable(digits=6)
 ```

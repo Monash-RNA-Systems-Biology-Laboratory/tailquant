@@ -238,3 +238,29 @@ tq_quantiles <- function(tq, prop) {
         tail
     })
 }
+
+
+
+#' @export
+tq_genes <- function(tq) {
+    unify <- function(vec) paste(unique(vec), collapse="/")
+    
+    tq@sites |>
+        dplyr::select(site, gene_id, name, biotype, product) |>
+        dplyr::collect() |>
+        dplyr::summarize(
+            sites=list(site), 
+            name=unify(name), 
+            biotype=unify(biotype), 
+            product=unify(product), 
+            .by=gene_id) |>
+        dplyr::arrange(gene_id)
+}
+
+#' @export
+counts_genesums <- function(counts, tq) {
+    df <- tq@sites |> dplyr::select(site, gene_id) |> dplyr::collect()
+    groups <- df$gene_id[ match(rownames(counts), df$site) ]
+    good <- !is.na(groups)
+    rowsum(counts[good,,drop=FALSE], groups[good])
+}

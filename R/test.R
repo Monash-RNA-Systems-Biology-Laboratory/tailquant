@@ -32,7 +32,7 @@ get_keep <- function(counts, min_count, min_count_in, design=NULL) {
     keep
 }
 
-tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, min_tail=NA, title="a test") {
+tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, min_tail=NA, genesums=FALSE, title="a test") {
     check_design(tq, design)
     
     if (is.na(min_tail)) {
@@ -42,6 +42,10 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
     }
     
     counts <- counts[,rownames(design),drop=FALSE]
+    
+    if (genesums) {
+        counts <- counts_genesums(counts, tq)
+    }
     
     keep <- get_keep(counts, min_count, min_count_in)
     
@@ -53,16 +57,25 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
     result <- weitrix::weitrix_confects(voomed, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
     result$title <- paste0(
         "Differential expression",
+        if (genesums) ", gene sums" else "",
         if (!is.na(min_tail)) paste0(", tail at least ", min_tail) else "",
         ": ", title)
-    result$what <- "sites"
     
-    sites <- tq@sites |>
-        dplyr::select(site, gene_id, name, biotype, product) |>
-        dplyr::collect()
-    i <- match(result$table$name, sites$site)
-    result$table$gene_name <- sites$name[i]
-    result$table$biotype <- sites$biotype[i]
+    if (genesums) {
+        result$what <- "genes"
+        genes <- tq_genes(tq)
+        i <- match(result$table$name, genes$gene_id)
+        result$table$gene_name <- genes$name[i]
+        result$table$biotype <- genes$biotype[i]
+    } else {
+        result$what <- "sites"
+        sites <- tq@sites |>
+            dplyr::select(site, gene_id, name, biotype, product) |>
+            dplyr::collect()
+        i <- match(result$table$name, sites$site)
+        result$table$gene_name <- sites$name[i]
+        result$table$biotype <- sites$biotype[i]
+    }
     
     result$plots <- list()
     result$plots[["Calibration vs sample"]] <- 
@@ -170,6 +183,22 @@ test_types <- list(
     "expression30" = list(
         title="Site expression, tail of at least 30",
         func=\(tq, ...) tq_test_expression(tq, min_tail=30, ...), 
+        version=4),
+    "expressiongenesum" = list(
+        title="Gene aggregate expression",
+        func=\(tq, ...) tq_test_expression(tq, genesums=TRUE, ...), 
+        version=4),
+    "expressiongenesum13" = list(
+        title="Gene aggregate expression, tail of at least 13",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=13, genesums=TRUE, ...), 
+        version=4),
+    "expressiongenesum20" = list(
+        title="Gene aggregate expression, tail of at least 20",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=20, genesums=TRUE, ...), 
+        version=4),
+    "expressiongenesum30" = list(
+        title="Gene aggregate expression, tail of at least 30",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=30, genesums=TRUE, ...), 
         version=4),
     "shift" = list(
         title="End shift",
