@@ -17,6 +17,19 @@ group_mean_columns <- function(mat, grouping) {
     t(rowsum(t(mat), groups) / as.vector(table(groups)))
 }
 
+choose_interesting <- function(patterns, n=50, diversity=NA) {
+    if (is.na(diversity)) {
+        scores <- apply(patterns,1,max) - apply(patterns,1,min)
+    } else {
+        patterns <- sweep(patterns,1,rowMeans(patterns),"-")
+        decomp <- svd(sweep(patterns,2,colMeans(patterns),"-"))
+        d <- decomp$d
+        u <- sweep(decomp$u,2,sqrt(d**2/((d*diversity)**2+d[1]**2)),"*")
+        scores <- rowSums(u*u)
+    }
+    
+    order(scores, decreasing=TRUE) |> head(n)
+}
 
 # This needs to go somewhere else...
 #! @export
@@ -25,7 +38,7 @@ tq_tail_bins <- function(tq, breaks, genesums=FALSE, grouping=NULL) {
     i <- seq_len(n-1)
     bins <- dplyr::tibble(
         start = breaks[i],
-        end = breaks[i+1]-(i<n),
+        end = breaks[i+1]-((i+1)<n),
         bases = end-start+1)
         
     bins$counts <- purrr::pmap(bins,\(start,end,...) tq_counts_tail_ended_in_range(tq, start, end))
@@ -67,17 +80,12 @@ tail_bins_plot <- function(bins, n=50, moderation=10, diversity=100, samples_out
     patterns <- sweep(patterns,1,rowMeans(patterns),"-")
     patterns <- sweep(patterns,1,sqrt(rowSums(patterns**2)+moderation**2),"/")
     
-    decomp <- svd(sweep(patterns,2,colMeans(patterns),"-"))
-#    u <- svd(patterns)$u
-    #nd <- round(pd*(ncol(patterns)-1))
-    #u <- decomp$u[, seq_len(nd), drop=FALSE]
+    #decomp <- svd(sweep(patterns,2,colMeans(patterns),"-"))
+    #d <- decomp$d
+    #u <- sweep(decomp$u,2,sqrt(d**2/((d*diversity)**2+d[1]**2)),"*")
+    #keep <- rank(-rowSums(u*u), ties.method="first") <= n
     
-    #print(decomp$d)
-    d <- decomp$d
-    u <- sweep(decomp$u,2,sqrt(d**2/((d*diversity)**2+d[1]**2)),"*")
-    #u <- sweep(patterns,2,colMeans(patterns),"-")
-    
-    keep <- rank(-rowSums(u*u), ties.method="first") <= n
+    keep <- choose_interesting(patterns, n, diversity)
     
     patterns <- patterns[keep,,drop=FALSE]
     
@@ -103,19 +111,59 @@ explore_ui <- function(tq) {
         shiny::numericInput("explore_const", "Moderation log2(CPM+nnn)", value=1, min=0, step=0.5),
         shiny::textInput("explore_select", "Sample selection (regular expression)", value=""),
         shiny::textInput("explore_group", "Sample grouping (regular expression)", value="(.*)"),
-        shiny::tableOutput("explore_grouping"))
+        shiny::tableOutput("explore_grouping"),
+        shiny::markdown("
+        **Notes:**
+        
+        The sample selection uses a regular expression.
+        
+        Example:
+        
+        * To match both wildtype and mutantB samples, use `wildtype|mutantB`.
+        
+        For the sample grouping, the part within brackets is used to define groups. By default this is `(.*)` which matches the whole of the sample name. Multiple brackets can be used.
+        
+        Example:
+        
+        * Suppose samples are named `foo_R1`, `foo_R2`, `bar_R1`, `bar_R2`, etc. Use `(.*)_R` to ensure the replicate number isn't included in the group name, thereby grouping replicates together.
+        
+        "))
     
     heatmap <- shiny::tagList(
-        shiny::numericInput("explore_n", "Features to show", value=50, min=10, max=1000, step=10),
-        plot_ui("explore_heatmap", width=1000, height=1000, margin_controls=FALSE))
+        bslib::layout_columns(
+            col_widths = c(3,9),
+            shiny::div(
+                shiny::numericInput("explore_n", "Features to show", value=50, min=10, max=1000, step=10),
+                shiny::selectInput("explore_how", "How to choose", c("Range"="range","Sphered variance"="variance"), selected="range"),
+                shiny::numericInput("explore_diversity", "Diversity (for sphered variance method)", value=100, min=0, step=10)),
+            plot_ui("explore_heatmap", width=1000, height=1000, margin_controls=FALSE)),
+        shiny::markdown("
+        **Notes:**
+        
+        **Log transformation and moderation:** The log transformation used here is controlled in the \"Configure\" tab. You may wish to adjust the \"moderation\". Larger values of moderation will produce smoother results, but will also show leass features with low expression levels.
+        
+        **Sphered variance method:** The \"sphered variance\" method performs PCA on the data and then picks features based on the sum of squares of how each feature scores in each component of the PCA. 
+        
+        The weight given to each component is controlled by the \"diversity\". If the diveristy is zero, features will simply be chosen by their variance. With a higher diversity, weight is spread more evenly among PCA components, and features with a greater diversity of expression patterns are found.
+        "))
     
     tail_bin <- shiny::tagList(
-        shiny::textInput("tailbin_breaks", "Tail length breaks", value="13 20 30 40 50 60 70 80"),
-        shiny::numericInput("tailbin_moderation", "Moderation", value=10, min=0, step=1),
-        shiny::numericInput("tailbin_diversity", "Diversity", value=100, min=0, step=1),
-        shiny::numericInput("tailbin_n", "Features to show", value=50, min=10, max=1000, step=10),
-        shiny::checkboxInput("tailbin_samples_outer", "Tail bins within samples", value=TRUE),
-        plot_ui("explore_tailbin_heatmap", width=1000, height=1000, margin_controls=FALSE))
+        bslib::layout_columns(
+            col_widths = c(3,9),
+            shiny::div(
+                shiny::textInput("tailbin_breaks", "Tail length breaks", value="13 20 30 40 50 60 70 80 90"),
+                shiny::numericInput("tailbin_moderation", "Moderation", value=10, min=0, step=1),
+                shiny::numericInput("tailbin_diversity", "Diversity", value=100, min=0, step=1),
+                shiny::numericInput("tailbin_n", "Features to show", value=50, min=10, max=1000, step=10),
+                shiny::checkboxInput("tailbin_samples_outer", "Tail bins within samples", value=TRUE)),
+            plot_ui("explore_tailbin_heatmap", width=1000, height=1000, margin_controls=FALSE)),
+        shiny::markdown("
+        **Notes:**
+        
+        Unlike other exploratory plots, this plot does not use log transformation. Instead, each feature is z-transformed. The moderation parameter here has the same purpose as in the one in the \"Configure\" tab used for the other plots, but operates differently: during the z-transformation it is added to the variance. This avoids over-inflating features with very low variance, to avoid over-emphasizing noise.
+        
+        Features are chosen by the \"sphered variance\" method as in the \"Heatmap\" tab.
+        "))
     
     bslib::navset_underline(
         header=shiny::p(),
@@ -139,11 +187,11 @@ explore_server <- function(input, output, session, tq) {
     grouping <- shiny::reactive({
         samples <- tq@samples$sample
         if (input$explore_select != "") {
-            keep <- stringr::str_detect(samples, input$explore_select)
+            keep <- stringr::str_detect(samples, stringr::regex(input$explore_select, ignore_case=TRUE))
             samples <- samples[keep]
         }
         
-        match <- stringr::str_match(samples, input$explore_group)
+        match <- stringr::str_match(samples, stringr::regex(input$explore_group, ignore_case=TRUE))
         keep <- !is.na(match[,1])
         samples <- samples[keep]
         match <- match[keep,,drop=FALSE]
@@ -219,7 +267,9 @@ explore_server <- function(input, output, session, tq) {
     })
     
     plot_server("explore_heatmap", \() {
-        varistran::plot_heatmap(lcpm(), n=input$explore_n, show_tree=FALSE, scale_label="log2 CPM")
+        diversity <- if (input$explore_how == "range") NA else input$explore_diversity
+        keep <- choose_interesting(lcpm(), input$explore_n, diversity)
+        varistran::plot_heatmap(lcpm()[keep,,drop=FALSE], show_tree=FALSE, scale_label="log2 CPM")
     })
     
     plot_server("explore_tailbin_heatmap", \() {
