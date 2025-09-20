@@ -98,7 +98,7 @@ tail_bins_plot <- function(bins, n=50, moderation=10, diversity=100, samples_out
         rownames(patterns) <- naming[ rownames(patterns) ]
     }
     
-    varistran::plot_heatmap(patterns, baseline=0, show_baseline=FALSE, show_tree=FALSE, scale_label="z")
+    varistran::plot_heatmap(patterns, baseline=0, show_baseline=FALSE, show_tree=FALSE, scale_label="z-score")
 }
 
 
@@ -140,11 +140,11 @@ explore_ui <- function(tq) {
         shiny::markdown("
         **Notes:**
         
-        **Log transformation and moderation:** The log transformation used here is controlled in the \"Configure\" tab. You may wish to adjust the \"moderation\". Larger values of moderation will produce smoother results, but will also show leass features with low expression levels.
+        **Log transformation and moderation:** The log transformation used here is controlled in the \"Configure\" tab. You may wish to adjust the \"moderation\". Larger values of moderation will produce smoother results, but will also show less features with low expression levels.
         
-        **Sphered variance method:** The \"sphered variance\" method performs PCA on the data and then picks features based on the sum of squares of how each feature scores in each component of the PCA. 
+        **Sphered variance method:** The \"sphered variance\" method performs PCA on the data and then picks features based on a weighted sum of squares of each feature's loadings in each component of the PCA. 
         
-        The weight given to each component is controlled by the \"diversity\". If the diveristy is zero, features will simply be chosen by their variance. With a higher diversity, weight is spread more evenly among PCA components, and features with a greater diversity of expression patterns are found.
+        The weight given to each component is controlled by the \"diversity\". If the diveristy is zero, components will be weighted by the variance of their scores, thus concentrating only only the first few components. This is equivalent to simply computing the variance for each feature. With a higher diversity, weight is spread more evenly among PCA components, and features with a greater diversity of expression patterns are found.
         "))
     
     tail_bin <- shiny::tagList(
@@ -162,7 +162,7 @@ explore_ui <- function(tq) {
         
         Unlike other exploratory plots, this plot does not use log transformation. Instead, each feature is z-transformed. The moderation parameter here has the same purpose as in the one in the \"Configure\" tab used for the other plots, but operates differently: during the z-transformation it is added to the variance. This avoids over-inflating features with very low variance, to avoid over-emphasizing noise.
         
-        Features are chosen by the \"sphered variance\" method as in the \"Heatmap\" tab.
+        Features are chosen by the \"sphered variance\" method as described in the \"Heatmap\" tab.
         "))
     
     bslib::navset_underline(
@@ -177,10 +177,11 @@ explore_ui <- function(tq) {
 
 explore_server <- function(input, output, session, tq) {
     title <- shiny::reactive({
+        what <- if (input$explore_genes) "Gene" else "Site"
         if (!is.na(input$explore_tail_min)) {
-            paste0("Site expression from reads with tail ≥ ", input$explore_tail_min)
+            paste0(what, " expression from reads with tail ≥ ", input$explore_tail_min)
         } else {
-            "Site expression from all reads"
+            paste0(what, " expression from all reads")
         }
     })
     
@@ -269,7 +270,8 @@ explore_server <- function(input, output, session, tq) {
     plot_server("explore_heatmap", \() {
         diversity <- if (input$explore_how == "range") NA else input$explore_diversity
         keep <- choose_interesting(lcpm(), input$explore_n, diversity)
-        varistran::plot_heatmap(lcpm()[keep,,drop=FALSE], show_tree=FALSE, scale_label="log2 CPM")
+        varistran::plot_heatmap(lcpm()[keep,,drop=FALSE], show_tree=FALSE, 
+            scale_label=paste0(units(), " - row mean"))
     })
     
     plot_server("explore_tailbin_heatmap", \() {
@@ -287,7 +289,7 @@ explore_server <- function(input, output, session, tq) {
         ggplot2::ggplot() + 
             ggplot2::aes(y=value-median,x=forcats::fct_rev(sample)) + 
             ggplot2::geom_hline(yintercept=0) +
-            ggplot2::geom_jitter(width=1/3, height=0, color="#000088", size=0.25, stroke=0) +
+            ggplot2::geom_jitter(width=1/3, height=0, color="#000088", size=0.75, stroke=0) +
             ggplot2::geom_boxplot(coef=0, outliers=FALSE, width=1/3, color="#cc0000") +
             ggplot2::labs(x="", y=paste0(units(), " - Median"), title=title()) +
             ggplot2::coord_flip() +
@@ -301,7 +303,7 @@ explore_server <- function(input, output, session, tq) {
             ggplot2::aes(x=median,y=value) + 
             ggplot2::facet_wrap(~sample) + 
             ggplot2::geom_abline(color="#cc0000") + 
-            ggplot2::geom_point(color="#000088", size=0.25, stroke=0) + 
+            ggplot2::geom_point(color="#000088", size=0.75, stroke=0) + 
             ggplot2::labs(x="Median", y=units(), title=title()) +
             ggplot2::coord_fixed() +
             ggplot2::theme_bw()
