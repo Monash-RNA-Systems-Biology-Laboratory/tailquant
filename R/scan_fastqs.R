@@ -244,7 +244,7 @@ demux_reads <- function(
         total_reads <- 0
         total_reads_kept <- 0
         total_reads_ended <- 0
-        total_reads_tailed <- 0
+        #total_reads_tailed <- 0
         
         scan_parquet(in_file, 
             columns=c(
@@ -260,14 +260,14 @@ demux_reads <- function(
                     dplyr::mutate(
                         readname = paste0(readname, "_", barcode,"_", umi),
                         has_end  = poly_a_length+poly_a_suffix >= clip_min_untemplated,
-                        has_tail = poly_a_length >= clip_min_untemplated,
+                        #has_tail = poly_a_length >= clip_min_untemplated,
                         clip = ifelse(has_end, poly_a_start-1, read_1_clip),
                         keep = clip >= clip_min_length)
                 
                 total_reads <<- total_reads + nrow(df)
                 total_reads_kept <<- total_reads_kept + sum(df$keep)
-                total_reads_ended <<- total_reads_tailed + sum(df$keep & df$has_end)
-                total_reads_tailed <<- total_reads_tailed + sum(df$keep & df$has_tail)
+                total_reads_ended <<- total_reads_ended + sum(df$keep & df$has_end)
+                #total_reads_tailed <<- total_reads_tailed + sum(df$keep & df$has_tail)
                 
                 if (clip) {
                     df <- df |>
@@ -296,8 +296,8 @@ demux_reads <- function(
             sample=sample, 
             reads=total_reads, 
             reads_kept=total_reads_kept, 
-            reads_ended=total_reads_ended,
-            reads_tailed=total_reads_tailed)
+            reads_ended=total_reads_ended)
+            #reads_tailed=total_reads_tailed)
     })
     
     result <- result |> dplyr::bind_rows()
