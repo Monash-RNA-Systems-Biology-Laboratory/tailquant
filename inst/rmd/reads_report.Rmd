@@ -9,6 +9,8 @@ output:
 title: "`r basename(params$in_file)`"
 ---
 
+The end of the genomic sequence in read 1 is considered identified if we see at least 12 total bases of poly(A) plus subsequent UMI and barcode.
+
 ```{r echo=F}
 knitr::opts_knit$set(root.dir=params$wd)
 knitr::opts_chunk$set(dpi=100, fig.width=6, fig.height=4)
@@ -35,8 +37,17 @@ t_lengths <- pq |>
     dplyr::count(poly_t_length) |>
     dplyr::collect()
 
+read_1_t_lengths <- pq |>
+    dplyr::filter(!is.na(sample)) |>
+    dplyr::count(read_1_poly_t_length) |>
+    dplyr::collect()
+
 a_long <- sum(a_lengths$n[a_lengths$poly_a_length >= 13]) / sum(a_lengths$n)
 t_long <- sum(t_lengths$n[t_lengths$poly_t_length >= 13]) / sum(t_lengths$n)
+
+read_1_t_13 <- sum(read_1_t_lengths$n[read_1_t_lengths$read_1_poly_t_length >= 13]) / sum(read_1_t_lengths$n)
+read_1_t_20 <- sum(read_1_t_lengths$n[read_1_t_lengths$read_1_poly_t_length >= 20]) / sum(read_1_t_lengths$n)
+read_1_t_50 <- sum(read_1_t_lengths$n[read_1_t_lengths$read_1_poly_t_length >= 50]) / sum(read_1_t_lengths$n)
 
 cat(paste0(
     '\n\n<div style="font-size: 120%">\n\n',
@@ -47,8 +58,12 @@ cat(paste0(
     scales::comma(stats$have_end), 
     " (", scales::percent(stats$have_end/stats$have_sample, accuracy=0.1), ") ",
     " of these had the end of the genomic sequence identified within read 1.\n\n",
-    scales::percent(a_long, accuracy=0.1), " poly(A) of 13 bases or longer in read 1 (among reads with identified sample and end of genomic sequence).\n\n",
-    scales::percent(t_long, accuracy=0.1), " poly(T) of 13 bases or longer in read 2 (among reads with identified sample).\n\n",
+    scales::percent(a_long, accuracy=0.1), " poly(A) in read 1 of 13 bases or longer (among reads with identified sample and end of genomic sequence).\n\n",
+    scales::percent(t_long, accuracy=0.1), " poly(T) in read 2 of 13 bases or longer (among reads with identified sample).\n\n",
+    "<br>\n\n",
+    scales::percent(read_1_t_13, accuracy=0.1), " poly(T) in read 1 of 13 bases or longer (among reads with identified sample).\n\n",
+    scales::percent(read_1_t_20, accuracy=0.1), " poly(T) in read 1 of 20 bases or longer (among reads with identified sample).\n\n",
+    scales::percent(read_1_t_50, accuracy=0.1), " poly(T) in read 1 of 50 bases or longer (among reads with identified sample).\n\n",
     "\n\n</div>\n\n"))
 
 max_tail <- max(a_lengths$poly_a_length, t_lengths$poly_t_length)

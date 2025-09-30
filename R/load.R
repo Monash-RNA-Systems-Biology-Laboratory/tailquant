@@ -61,13 +61,13 @@ load_tt_sites <- function(path, reference_gff=NULL, reference_fasta=NULL) {
 
 
 # Helper function to load Tail Tools clipping information
-load_tt_clips <- function(path) {
-    clips_filename <- file.path(path, "clipped_reads.clips.gz")
+load_tt_clips <- function(clips_file) {
+    #clips_filename <- file.path(path, "clipped_reads.clips.gz")
     
     # Clips file is TSV, commented header line
     # name, length, a_start, a_end, a_start_ignoring_adaptor, a_end_ignoring_adaptor, adaptor_bases
     # Zero-based!
-    clips <- readr::read_tsv(clips_filename, col_types="ciiiiii", skip=1, col_names=FALSE, lazy=FALSE, progress=FALSE)
+    clips <- readr::read_tsv(clips_file, col_types="cnnnnnn", skip=1, col_names=FALSE, lazy=FALSE, progress=FALSE)
     colnames(clips) <- c(
         "name", "length", 
         "a_start", "a_end", 
@@ -130,31 +130,43 @@ load_read1_clips <- function(read_names, read_pairs_file) {
 #'
 #' @export
 load_bam_into <- function(
-        dest_filename, bam_filename, 
-        tail_source, read_pairs_file=NULL, 
+        dest_file, bam_file, 
+        tail_source, read_pairs_file=NULL, clips_file=NULL,
         limit=NA, filter_secondary=TRUE) {
     
-    assertthat::assert_that(file.exists(bam_filename))
+    assertthat::assert_that(file.exists(bam_file))
     
     param <- Rsamtools::ScanBamParam(
         what=c("qname"), 
         tag=c("NH"),
         flag=Rsamtools::scanBamFlag(isSecondaryAlignment=ifelse(filter_secondary,FALSE,NA)))
     
-    yield <- local_write_parquet(dest_filename)
-    yield(dplyr::tibble(
+    # - If tails from Tail Tools, load them all ahead of time
+    # - Some older Tail Tools runs will not have UMIs, in which case umi column won't be present in output
+    have_umis <- TRUE
+    tt_clips <- NULL
+    if (tail_source == "tt") {
+        tt_clips <- load_tt_clips(clips_file)
+        have_umis <- "umi" %in% names(tt_clips)
+    }
+    
+    template <- dplyr::tibble(
         chr=character(0),
         pos=integer(0),
         strand=integer(0),
         num_hits=integer(0),
         length=numeric(0),
         tail_start=numeric(0),
-        tail=numeric(0),
-        umi=character(0)
-    ))
+        tail=numeric(0))
+    if (have_umis) {
+        template$umi <- character(0)
+    }
+    
+    yield <- local_write_parquet(dest_file)
+    yield(template)
     
     scan_bam_chunks(
-        bam_filename, 
+        bam_file, 
         param=param, 
         limit=limit, 
         callback=\(alignments) {
@@ -171,7 +183,7 @@ load_bam_into <- function(
                     num_hits=NH)
             
             if (tail_source == "tt") {
-                clips <- load_tt_clips(path)
+                clips <- tt_clips
             } else if (tail_source == "read2") {
                 clips <- load_read2_clips(alignments$read, read_pairs_file)
             } else if (tail_source == "read1") {
@@ -246,12 +258,14 @@ ingest_tt <- function(
         message("Step 3: reads")
         ensure_dir(out_dir, "reads")
         parallel_walk(sample_names, \(sample) {
-            bam_filename <- file.path(in_dir,"samples",sample,"alignments_filtered_sorted.bam")
+            bam_file <- file.path(in_dir,"samples",sample,"alignments_filtered_sorted.bam")
+            clips_file <- file.path(in_dir,"samples",sample,"clipped_reads.clips.gz")
             load_bam_into(
                 file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
-                bam_filename,
+                bam_file,
                 tail_source=tail_source, 
-                read_pairs_file=read_pairs_file, 
+                read_pairs_file=read_pairs_file,
+                clips_file=clips_file,
                 limit=limit, 
                 filter_secondary=FALSE) # Tail Tools has already filtered to one alignment per read
             NULL

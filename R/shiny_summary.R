@@ -3,6 +3,12 @@
 summary_ui <- function(tq) {
     df <- tq_sample_stats(tq)
     
+    site_counts <- tq@sites |>
+        dplyr::count(relation) |>
+        dplyr::collect()
+    sites_total <- sum(site_counts$n)
+    sites_gene <- sum(site_counts$n[ !is.na(site_counts$relation) ])
+    
     shiny::div(
         shiny::h2("Samples"),
         DT::datatable(
@@ -19,8 +25,10 @@ summary_ui <- function(tq) {
             DT::formatStyle(
                 c("mean_tail"),
                 background = DT::styleColorBar(c(0,df$mean_tail)*1.1, "#aaffaa")),
-        shiny::p("n = Total UMIs")
-    )
+        shiny::p("n = Total UMIs"),
+        shiny::h2("Sites"),
+        shiny::p(paste0(sites_total, " sites.")),
+        shiny::p(paste0(sites_gene, " sites associated with a gene.")))
 }
 
 

@@ -53,12 +53,15 @@ scan_paired_chunks <- function(
     
     n1 <- purrr::map2_dbl(seq1, qual1, 
         \(seq,qual) quality_clip(seq, qual, clip_quality_char, clip_penalty))
-    sr1 <- purrr::imap(seq1, 
+    polya_r1 <- purrr::imap(seq1, 
         \(seq,i) scan_suffix(seq, "A", suffix[i], n1[i], poly_penalty, suffix_penalty))
+    
+    polyt_r1 <- purrr::map2(seq1, n1,
+        \(seq,n) scan(seq, "T", n, poly_penalty))
     
     n2 <- purrr::map2_dbl(seq2, qual2, 
         \(seq,qual) quality_clip(seq,qual, clip_quality_char, clip_penalty))
-    sr2 <- purrr::map2(seq2, n2, 
+    polyt_r2 <- purrr::map2(seq2, n2, 
         \(seq,n) scan_from(seq, "T", 19, n, poly_penalty))
     
     tibble::tibble(
@@ -71,15 +74,17 @@ scan_paired_chunks <- function(
         read_1_qual=qual1,
         read_1_length=purrr::map_dbl(seq1, nchar),
         read_1_clip=n1,
-        poly_a_start=purrr::map_dbl(sr1, 1), 
-        poly_a_length=purrr::map_dbl(sr1,\(sr) sr[2]-sr[1]+1),
-        poly_a_suffix=purrr::map_dbl(sr1, 3),
+        poly_a_start=purrr::map_dbl(polya_r1, 1), 
+        poly_a_length=purrr::map_dbl(polya_r1,\(sr) sr[2]-sr[1]+1),
+        poly_a_suffix=purrr::map_dbl(polya_r1, 3),
+        read_1_poly_t_start=purrr::map_dbl(polyt_r1, 1), #Used for filtering
+        read_1_poly_t_length=purrr::map_dbl(polyt_r1, \(sr) sr[2]-sr[1]+1), #Used for filtering
         read_2_seq=seq2, #Expensive if not needed!
         read_2_qual=qual2, #Expensive if not needed!
         read_2_length=purrr::map_dbl(seq2, nchar),
         read_2_clip=n2, 
-        poly_t_start=purrr::map_dbl(sr2, 1), 
-        poly_t_length=purrr::map_dbl(sr2,\(sr) sr[2]-sr[1]+1))
+        poly_t_start=purrr::map_dbl(polyt_r2, 1), 
+        poly_t_length=purrr::map_dbl(polyt_r2,\(sr) sr[2]-sr[1]+1))
 }
 
 
@@ -140,6 +145,8 @@ ingest_read_pairs <- function(
             poly_a_start=numeric(0),
             poly_a_length=numeric(0),
             poly_a_suffix=numeric(0),
+            read_1_poly_t_start=numeric(0),
+            read_1_poly_t_length=numeric(0),
             read_2_seq=character(0),
             read_2_qual=character(0),
             read_2_length=numeric(0),
@@ -147,7 +154,7 @@ ingest_read_pairs <- function(
             poly_t_start=numeric(0),
             poly_t_length=numeric(0)))
         
-        chunk <- 2e5
+        chunk <- 50000
         total <- 0
         repeat {
             lines_to_read <- 4*max(0, min(chunk, limit-total))
@@ -194,6 +201,8 @@ ingest_read_pairs <- function(
 #'
 #' @param clip_min_length If clipped read is shorter than this, discard it.
 #'
+#' @param max_t_read_1 If read 1 had a poly(T) span longer than this, the read is discarded.
+#'
 #' @param min_t If read 2 had a poly(T) length less than this in read 2, the read is discarded.
 #'
 #' @export
@@ -204,6 +213,7 @@ demux_reads <- function(
         clip=FALSE,
         clip_min_untemplated=12,
         clip_min_length=20,
+        max_t_read_1=20,
         min_t=0,
         verbose=FALSE) {
     assertthat::assert_that(file.exists(in_file), msg="Input file doesn't exist.")
@@ -240,12 +250,13 @@ demux_reads <- function(
             columns=c(
                 "readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual",
                 "poly_a_length", "poly_a_suffix", "poly_a_start", "read_1_clip",
-                "poly_t_length"), 
+                "poly_t_length", "read_1_poly_t_length"), 
             callback=\(df) {
                 df <- df |>
                     dplyr::filter(
                         sample == .env$sample,
-                        poly_t_length >= .env$min_t) |>
+                        poly_t_length >= .env$min_t,
+                        read_1_poly_t_length <= .env$max_t_read_1) |>
                     dplyr::mutate(
                         readname = paste0(readname, "_", barcode,"_", umi),
                         has_end  = poly_a_length+poly_a_suffix >= clip_min_untemplated,
@@ -340,7 +351,7 @@ reads_peek <- function(in_file, n=100, line_width=120, seed=563, out_file=NA) {
     }
     
     cat("
-This is a random selection of read pairs. For each read, the three lines are:
+This is a random selection of read pairs. For each read pair, the three lines are:
 
 1. Quality scores
 2. DNA Sequence
@@ -348,7 +359,8 @@ This is a random selection of read pairs. For each read, the three lines are:
      b = barcode
      u = UMI
      ^ = tail
-     s = suffix (UMI and barcode following tail) 
+     s = suffix (UMI and barcode following tail)
+     t = poly(T) run in read 1 (reads with long runs like this may need to be filtered)
      - = any other sequence that passed quality clip
 
 ")
@@ -376,6 +388,7 @@ This is a random selection of read pairs. For each read, the three lines are:
         ind <- seq_along(seq)
         anno <- rep("-", length(seq))
         anno[ind > df$read_1_clip] <- " "
+        anno[ind >= df$read_1_poly_t_start & ind <= df$read_1_poly_t_start+df$read_1_poly_t_length-1] <- "t"
         anno[ind >= df$poly_a_start & ind <= df$poly_a_start+df$poly_a_length-1] <- "^"
         anno[ind >= df$poly_a_start+df$poly_a_length &
              ind <= df$poly_a_start+df$poly_a_length+df$poly_a_suffix-1] <- "s"
@@ -386,9 +399,9 @@ This is a random selection of read pairs. For each read, the three lines are:
             k <- min(length(seq),j+line_width-1)
             ind <- seq(j,k)
             cat(paste0(
-                paste(qual[ind],collapse=""),"\n",
-                paste(seq[ind],collapse=""),"\n",
-                paste(anno[ind],collapse=""),"\n\n"))
+                "1 ",paste(qual[ind],collapse=""),"\n",
+                "1 ",paste(seq[ind],collapse=""),"\n",
+                "1 ",paste(anno[ind],collapse=""),"\n\n"))
             j <- k+1
         }
         
@@ -409,9 +422,9 @@ This is a random selection of read pairs. For each read, the three lines are:
             k <- min(length(seq),j+line_width-1)
             ind <- seq(j,k)
             cat(paste0(
-                paste(qual[ind],collapse=""),"\n",
-                paste(seq[ind],collapse=""),"\n",
-                paste(anno[ind],collapse=""),"\n\n"))
+                "2 ",paste(qual[ind],collapse=""),"\n",
+                "2 ",paste(seq[ind],collapse=""),"\n",
+                "2 ",paste(anno[ind],collapse=""),"\n\n"))
             j <- k+1
         }
     }

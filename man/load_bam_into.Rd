@@ -5,10 +5,11 @@
 \title{Load data from a BAM file}
 \usage{
 load_bam_into(
-  dest_filename,
-  bam_filename,
+  dest_file,
+  bam_file,
   tail_source,
   read_pairs_file = NULL,
+  clips_file = NULL,
   limit = NA,
   filter_secondary = TRUE
 )

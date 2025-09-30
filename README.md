@@ -1,10 +1,19 @@
 # tailquant
 
-**Under development, may change.**
+**Under development, anything may change.**
 
-Improved quantification of poly(A) tail length from PAT-Seq data using Kaplan-Meier survival curves.
+* Default settings may change in future.
 
-## Usage
+Improved quantification of poly(A) tail length from PAT-Seq data.
+
+* Kaplan-Meier survival curve analysis (for older version of PAT-Seq).
+* Faster to access data representation using parquet files.
+* Calling poly(A) tail length from poly(T) sequence observed in read 2.
+
+
+## Usage after Tail Tools
+
+tailquant can ingest the output of our earlier Tail Tools pipeline.
 
 ```r
 # Package needs to be installed for multiprocessing to work
@@ -27,14 +36,21 @@ ingest_tt(
     length_trim=10    # (default) poly(A) tail reaching within 10 bases of the end 
                       #           we treat as not having ended.
 )
-
-# Open Shiny app
-tq <- load_tq("my_output_dir")
-tq_shiny(tq, title="Tail length examiner for this dataset")
 ```
 
 
-## Demultiplexing and poly(A)/poly(T) length calling
+## Demultiplexing and poly(T) length calling
+
+tailquant can be used to demultiplex reads before using Tail Tools. It can then make use of poly(T) length information from read 2 if this is available.
+
+We expect read pairs with:
+
+* In read 1, possibly a poly(A) tail sequence, followed by UMI and barcode sequence.
+* In read 2, a barcode, a UMI, and poly(T) sequence in read 2.
+
+Due to the primers used, the poly(T) sequence is expected to be of length at least 12. Seeing a poly(T) of 13 bases or more in read 2 indicates we are seeing real poly(A) tail and not just primer sequence.
+
+We also sometimes observe read pairs where there is a long span of "T"s in read 1. We think these are not real, and should be filtered. 
 
 ```r
 # Package needs to be installed for multiprocessing to work
@@ -66,17 +82,17 @@ ingest_read_pairs(
 
 # You can now examine reads.peek.txt and reads.report.html to assess quality.
 
-# Step 2 produces demultiplexed fastq files from the parquet file.
-demux_reads(
-    out_dir="my_output_dir", 
-    in_file="reads.parquet")
-
-# Optionally in step 2 you can filter by poly(T) length.
+# Step 2 produces demultiplexed fastq files from the parquet file, suitable for Tail Tools.
 demux_reads(
     out_dir="my_output_dir", 
     in_file="reads.parquet",
-    min_t=13)
+    max_t_read_1=20   # (default) Discard any reads with a run of Ts longer than this in read 1
+    #, min_t=13       # Optionally discard any read pairs without poly(T) in read 2 
+    )
+
 ```
+
+We've observed in read 1 there are often reads with long spans of "T"s. These are filtered by default by `demux_reads`. We would also always expect to see a poly(T) in read 2 corresponding the the poly(A) tail. `demux_reads` can also optionally filter reads that lack this.
 
 `reads.parquet` contains the input reads, sample assignment, UMIs, and information about poly(A) and poly(T) lengths. This is a big file, so be sure to delete it once you are done with it.
 
@@ -98,3 +114,46 @@ ingest_tt(
     length_trim=0     # poly(T) should be fine reaching to the end of read2.
 )
 ```
+
+
+## Shiny app
+
+```r
+# Open Shiny app
+tq <- load_tq("my_output_dir")
+app <- tq_shiny(tq, title="Tail length examiner for this dataset")
+app
+```
+
+The tailquant Shiny app supports a wide range of linear model based differential tests. 
+
+Tests are specified in a named list:
+
+* The name of each item will be used in a cache filenames.
+* Each item is itself a named list containing:
+    * "design" - matrix with row names corresponding to sample names - a design matrix as in limma etc.
+    * "contrasts" - matrix with column names - a contrast matrix as in limma etc. Should have as many rows as there are columns in the design matrix. A single column specifies a t-test, and multiple columns specifies an F-test.
+    * "title" - string - a title for the test.
+
+For common experimental designs tailquant provides helper functions `make_tests_oneway` and `make_tests_twoway`.
+
+For example, suppose your sample names were named like `group_replicate`, you could use:
+
+```r
+library(tidyverse)
+
+# Use a regular expression to extract parts from the sample names
+# and convert them to factors.
+sample_names <- tq@samples$sample
+parts <- str_match(sample_names, "(.*)_(.*)")
+group <- fct_inorder(parts[,2])
+rep <- fct_inorder(parts[,3])
+
+# Construct tests for an experiment with one experimental factor.
+# The batches argument is optional, only include it if you believe there is a batch effect.
+tests <- make_tests_oneway(sample_names, groups=group, batches=rep)
+
+app <- tq_shiny(tq, tests=tests, title="App with differential tests")
+app
+```
+

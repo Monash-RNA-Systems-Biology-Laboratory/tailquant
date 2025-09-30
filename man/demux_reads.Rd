@@ -11,6 +11,7 @@ demux_reads(
   clip = FALSE,
   clip_min_untemplated = 12,
   clip_min_length = 20,
+  max_t_read_1 = 20,
   min_t = 0,
   verbose = FALSE
 )
@@ -25,6 +26,8 @@ demux_reads(
 \item{clip_min_untemplated}{If clipping and a poly(A) tail plus expected suffix bases (UMI, barcode) was detected with at least this length, clip to this length. Otherwise clip at end of good quality region.}
 
 \item{clip_min_length}{If clipped read is shorter than this, discard it.}
+
+\item{max_t_read_1}{If read 1 had a poly(T) span longer than this, the read is discarded.}
 
 \item{min_t}{If read 2 had a poly(T) length less than this in read 2, the read is discarded.}
 }

@@ -76,6 +76,14 @@ make_test_average <- function(samples, groups, group1, group2, batches=NULL, nam
     result
 }
 
+#' Make a set of tests with one experimental factor
+#'
+#' @param samples Chacter vector of sample names.
+#'
+#' @param groups Factor specifying experimental groups of interest.
+#'
+#' @param batches An option batch factor.
+#'
 #' @export
 make_tests_oneway <- function(samples, groups, batches=NULL) {
     assertthat::assert_that(is.factor(groups))
@@ -189,6 +197,16 @@ make_test_twoway_interaction <- function(samples, groups1, groups2, batches=NULL
     result
 }
 
+#' Make a set of tests with one experimental factors
+#'
+#' @param samples Chacter vector of sample names.
+#'
+#' @param groups1 First factor in the experiment.
+#'
+#' @param groups1 Second factor in the experiment.
+#'
+#' @param batches An option batch factor.
+#'
 #' @export
 make_tests_twoway <- function(samples, groups1, groups2, batches=NULL) {
     c(

@@ -63,7 +63,8 @@ NumericVector scan(std::string s, char c, int n, double penalty) {
 
 /*
 In a string, up to the nth character,
-Find the best span containing mostly the c character, then possibly continuing into a subsequent sequence.
+Find the best span containing mostly the c character, then possibly continuing into a suffix sequence.
+The suffix sequence may extend beyond the nth character.
 score = matches - penalty * mixmatches
 Returns 1-based range of the span, the suffix match length, and the score.
 */

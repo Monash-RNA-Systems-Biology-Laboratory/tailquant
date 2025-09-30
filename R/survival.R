@@ -121,8 +121,10 @@ km_complete <- function(km, min_tail=0, max_tail=NULL) {
 site_reads_into <- function(dest_filename, reads_filename, sites, site_pad, site_upstrand) {
     sites <- dplyr::collect(sites)
     
+    has_umis <- "umi" %in% colnames(open_dataset(reads_filename))
+    
     yield <- local_write_parquet(dest_filename)
-    yield(dplyr::tibble(
+    template <- dplyr::tibble(
         site=character(0),
         close_to_site=logical(0),
         chr=character(0),
@@ -131,8 +133,11 @@ site_reads_into <- function(dest_filename, reads_filename, sites, site_pad, site
         num_hits=integer(0),
         length=numeric(0),
         tail_start=numeric(0),
-        tail=numeric(0),
-        umi=character(0)))
+        tail=numeric(0))
+    if (has_umis) {
+        template$umi <- character(0)
+    }
+    yield(template)
     
     scan_parquet(reads_filename, \(reads) {
         # Associate reads with sites
