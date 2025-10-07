@@ -215,3 +215,29 @@ make_tests_twoway <- function(samples, groups1, groups2, batches=NULL) {
         make_tests_twoway_helper(samples, groups1, groups2, batches),
         make_tests_twoway_helper(samples, groups2, groups1, batches))
 }
+
+
+#' Convert tailquant test list to Tail Tools format
+#'
+#' Convert a list of test specifications for tailquant to the format used by the older Tail Tools software.
+#'
+#' @param tests A named list of test specifications, for example as produced by make_tests_oneway or make_tests_twoway.
+#'
+#' @param pipeline_dir The Tail Tools pipeline output directory.
+#'
+#' @export
+tests_to_tt <- function(tests, pipeline_dir) {
+    result <- list()
+    for(name in names(tests)) {
+        item <- tests[[name]]
+        result[[name]] <- list(
+            "test",
+            title=item[["title"]],
+            pipeline_dir=pipeline_dir,
+            samples=rownames(item[["design"]]),
+            design=item[["design"]],
+            contrast=item[["contrasts"]])
+    }
+    
+    result
+}

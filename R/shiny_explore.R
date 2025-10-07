@@ -101,6 +101,36 @@ tail_bins_plot <- function(bins, n=50, moderation=10, diversity=100, samples_out
     varistran::plot_heatmap(patterns, baseline=0, show_baseline=FALSE, show_tree=FALSE, scale_label="z-score")
 }
 
+#' Plot a distribution of tail lengths per sample
+#'
+#' @export
+tq_plot_sample_tails <- function(tq, grouping=NULL) {
+    if (is.null(grouping)) {
+        samples <- unique(df$sample)
+        grouping <- dplyr::tibble(sample=samples, group=forcats::fct_inorder(samples))
+    }
+    
+    df <- tq@samples |>
+        dplyr::filter(sample %in% grouping$sample) |>
+        purrr::pmap(\(sample, tail_counts, ...) {
+            tail_counts |>
+                dplyr::summarize(n_event=sum(n_event), n_died=sum(n_died), .by=tail) |>
+                dplyr::collect() |>
+                dplyr::mutate(sample = sample)
+        }) |> 
+        dplyr::bind_rows() |>
+        dplyr::left_join(grouping, by="sample") |>
+        dplyr::summarize(n_event=sum(n_event), n_died=sum(n_died), .by=c(group, tail))
+    
+    ggplot2::ggplot(df) + 
+        ggplot2::aes(x=tail) + 
+        ggplot2::facet_wrap(~ group, scales="free_y") +
+        ggplot2::geom_col(ggplot2::aes(y=n_event), width=1, fill="#888888") +
+        ggplot2::geom_col(ggplot2::aes(y=n_died), width=1, fill="#000000") +
+        ggplot2::labs(x="Tail length", y="Count") +
+        ggplot2::theme_bw()
+}
+
 
 explore_ui <- function(tq) {
     
@@ -168,6 +198,7 @@ explore_ui <- function(tq) {
     bslib::navset_underline(
         header=shiny::p(),
         bslib::nav_panel("Configure", configure),
+        bslib::nav_panel("Tail distribution", plot_ui("explore_sample_tail", width=1000, height=600, margin_controls=FALSE)),
         bslib::nav_panel("Biplot", plot_ui("explore_biplot", width=1000, height=600, margin_controls=FALSE)),
         bslib::nav_panel("RLE plot", plot_ui("explore_rle", width=1000, height=600, margin_controls=FALSE)),
         bslib::nav_panel("Sample vs median plot", plot_ui("explore_sample_median", width=1000, height=600, margin_controls=FALSE)),
@@ -262,6 +293,9 @@ explore_server <- function(input, output, session, tq) {
         tq_tail_bins(tq, breaks(), genesums=input$explore_genes, grouping=grouping())
     })
     
+    plot_server("explore_sample_tail", \() {
+        tq_plot_sample_tails(tq, grouping())
+    })
     
     plot_server("explore_biplot", \() {
         varistran::plot_biplot(lcpm())

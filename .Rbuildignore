@@ -1,3 +1,6 @@
 ^LICENSE\.md$
 ^Makefile$
 
+^_pkgdown\.yml$
+^docs$
+^pkgdown$

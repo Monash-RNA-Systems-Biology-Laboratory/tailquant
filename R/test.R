@@ -77,6 +77,9 @@ tq_test_expression <- function(tq, design, contrasts, fdr=0.05, min_count=10, mi
         result$table$biotype <- sites$biotype[i]
     }
     
+    result$magnitude_column <- "row_mean"
+    result$magnitude_desc <- "average log2 CPM"
+    
     result$plots <- list()
     result$plots[["Calibration vs sample"]] <- 
         compact_plot(weitrix::weitrix_calplot(voomed, design, cat=col))
@@ -110,6 +113,9 @@ tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10
     result <- weitrix::weitrix_confects(cal, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
     result$title <- paste0("Differential tail length, quantile ",prop*100,"%: ", title)
     result$what <- "sites"
+    
+    result$magnitude_column <- "row_mean"
+    result$magnitude_desc <- "average tail length"
     
     sites <- tq@sites |>
         dplyr::select(site, gene_id, name, biotype, product) |>
@@ -153,6 +159,14 @@ tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_cou
     result$title <- paste0("End shift: ", title)
     result$what <- "genes"
     
+    # x-axis on MD plot should be average expression
+    total_reads <- SummarizedExperiment::rowData(cal)$total_reads
+    ave_expr <- log2( total_reads*1e6 / sum(total_reads) / ncol(counts) )
+    result$table$ave_expr <- ave_expr[result$table$index]
+    result$table$row_mean <- NULL
+    result$magnitude_column <- "ave_expr"
+    result$magnitude_desc <- "average log2 CPM"
+    
     i <- match(result$table$name, sites$gene_id)
     result$table$gene_name <- sites$name[i]
     result$table$biotype <- sites$biotype[i]
@@ -171,59 +185,59 @@ test_types <- list(
     "expression" = list(
         title="Site expression",
         func=tq_test_expression, 
-        version=4),
+        version=5),
     "expression13" = list(
         title="Site expression, tail of at least 13",
         func=\(tq, ...) tq_test_expression(tq, min_tail=13, ...), 
-        version=4),
+        version=5),
     "expression20" = list(
         title="Site expression, tail of at least 20",
         func=\(tq, ...) tq_test_expression(tq, min_tail=20, ...), 
-        version=4),
+        version=5),
     "expression30" = list(
         title="Site expression, tail of at least 30",
         func=\(tq, ...) tq_test_expression(tq, min_tail=30, ...), 
-        version=4),
+        version=5),
     "expressiongenesum" = list(
         title="Gene aggregate expression",
         func=\(tq, ...) tq_test_expression(tq, genesums=TRUE, ...), 
-        version=4),
+        version=5),
     "expressiongenesum13" = list(
         title="Gene aggregate expression, tail of at least 13",
         func=\(tq, ...) tq_test_expression(tq, min_tail=13, genesums=TRUE, ...), 
-        version=4),
+        version=5),
     "expressiongenesum20" = list(
         title="Gene aggregate expression, tail of at least 20",
         func=\(tq, ...) tq_test_expression(tq, min_tail=20, genesums=TRUE, ...), 
-        version=4),
+        version=5),
     "expressiongenesum30" = list(
         title="Gene aggregate expression, tail of at least 30",
         func=\(tq, ...) tq_test_expression(tq, min_tail=30, genesums=TRUE, ...), 
-        version=4),
+        version=5),
     "shift" = list(
         title="End shift",
         func=tq_test_shift,
-        version=4),
+        version=5),
     "quantile90" = list(
         title="Tail length, 90% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.9, ...), 
-        version=4),
+        version=5),
     "quantile75" = list(
         title="Tail length, 75% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.75, ...), 
-        version=4),
+        version=5),
     "quantile50" = list(
         title="Tail length, 50% are longer (median)",
         func=\(tq, ...) tq_test_quantile(tq, 0.5, ...), 
-        version=4),
+        version=5),
     "quantile25" = list(
         title="Tail length, 25% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.25, ...), 
-        version=4),
+        version=5),
     "quantile10" = list(
         title="Tail length, 10% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.1, ...), 
-        version=4))
+        version=5))
 
 
 #' @export

@@ -4,12 +4,29 @@
 
 * Default settings may change in future.
 
-Improved quantification of poly(A) tail length from PAT-Seq data.
+Improved quantification of poly(A) tail length from PAT-Seq data. Designed to be a replacement for 
+[Tail Tools](https://github.com/Monash-RNA-Systems-Biology-Laboratory/tail-tools).
 
 * Kaplan-Meier survival curve analysis (for older version of PAT-Seq).
 * Faster to access data representation using parquet files.
 * Calling poly(A) tail length from poly(T) sequence observed in read 2.
 
+
+## Installation
+
+Install:
+
+* R (version 4.4 or higher)
+* STAR (version 2.7.11b or higher)
+* seqtk (optional, version 1.3 or higher)
+
+Then within R install BiocManager and use BiocManager to install this Git repository:
+
+```r
+install.packages("BiocManager")
+
+BiocManager::install("Monash-RNA-Systems-Biology-Laboratory/tailquant")
+```
 
 ## Usage after Tail Tools
 
@@ -156,4 +173,6 @@ tests <- make_tests_oneway(sample_names, groups=group, batches=rep)
 app <- tq_shiny(tq, tests=tests, title="App with differential tests")
 app
 ```
+
+Note: Tests for tailquant can be converted to to work with the older Tail Tools software using the function `tests_to_tt()`.
 

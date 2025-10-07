@@ -18,7 +18,15 @@ test_ui <- function(tq, tests) {
         
     
     summary <- shiny::tagList(
-        shiny::uiOutput("test_summary"))
+        shiny::uiOutput("test_summary"),
+        shiny::fluidRow(
+            shiny::column(1, shiny::numericInput("test_xmin", "x-axis min", value=NA)),
+            shiny::column(1, shiny::numericInput("test_xmax", "x-axis max", value=NA)),
+            shiny::column(1, shiny::numericInput("test_ymin", "y-axis min", value=NA)),
+            shiny::column(1, shiny::numericInput("test_ymax", "y-axis max", value=NA)),
+            shiny::column(2, shiny::textInput("test_ylabel", "y-axis label", value="")),
+            shiny::column(2, shiny::textInput("test_breaks", "Confect breaks", value=""))),
+        plot_ui("test_me"))
     
     results <- shiny::tagList(
         shiny::uiOutput("test_table_header"),
@@ -35,7 +43,8 @@ test_ui <- function(tq, tests) {
             bslib::nav_panel("Configure", configure),
             bslib::nav_panel("Result summary", summary),
             bslib::nav_panel("Result table", results),
-            bslib::nav_panel("Result diagnostics", diagnostics)))
+            bslib::nav_panel("Result diagnostics", diagnostics)),
+        shiny::div(style="height: 800px;"))
 }
 
 test_server <- function(input, output, session, tq, tests) {
@@ -54,6 +63,22 @@ test_server <- function(input, output, session, tq, tests) {
         tq_test(tq, input$test_type, cache_key=cache_key, spec=spec)
     }))
     
+    ylim <- reactive({
+        ymin <- input$test_ymin
+        if (is.na(ymin))
+            ymin <- min(results()$table$effect,na.rm=T)
+        ymax <- input$test_ymax
+        if (is.na(ymax))
+            ymax <- max(results()$table$effect,na.rm=T)
+        c(ymin, ymax)
+    })
+    
+    xlim <- reactive({
+        xmin <- input$test_xmin
+        xmax <- input$test_xmax
+        c(xmin, xmax)
+    })
+    
     output$test_summary <- shiny::renderUI({
         table <- results()$table
         shiny::div(
@@ -61,6 +86,20 @@ test_server <- function(input, output, session, tq, tests) {
             shiny::p(nrow(table), " ", results()$what),
             shiny::p(sum(!is.na(table$confect)), "significant ", results()$what),
             shiny::p(format(results()$df_prior, digits=3), "prior degrees of freedom"))
+    })
+    
+    plot_server("test_me", \() {
+        breaks <- input$test_breaks
+        breaks <- strsplit(breaks, "(,|\\s)+")[[1]]
+        breaks <- na.omit(as.numeric(breaks))
+        
+        this_results <- results()
+        ylabel <- input$test_ylabel
+        if (ylabel != "")
+            this_results$effect_desc <- ylabel
+        
+        topconfects::confects_plot_me2(this_results, breaks=breaks) +
+            ggplot2::coord_cartesian(ylim=ylim(), xlim=xlim())
     })
     
     output$test_table_header <- shiny::renderUI({
