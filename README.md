@@ -62,7 +62,7 @@ tailquant can be used to demultiplex reads before using Tail Tools. It can then 
 
 We expect read pairs with:
 
-* In read 1, possibly a poly(A) tail sequence, followed by UMI and barcode sequence.
+* In read 1, sequence transcribed from the genome, possibly followed by a poly(A) tail sequence, and then possibly followed by UMI and barcode sequence.
 * In read 2, a barcode, a UMI, and poly(T) sequence in read 2.
 
 Due to the primers used, the poly(T) sequence is expected to be of length at least 12. Seeing a poly(T) of 13 bases or more in read 2 indicates we are seeing real poly(A) tail and not just primer sequence.
@@ -174,5 +174,16 @@ app <- tq_shiny(tq, tests=tests, title="App with differential tests")
 app
 ```
 
-Note: Tests for tailquant can be converted to to work with the older Tail Tools software using the function `tests_to_tt()`.
+### Using tests with the old Tail Tools differential test app
+
+Tests for tailquant can be converted to to work with the older Tail Tools software using the function `tests_to_tt()`.
+
+```r
+library(tailtools)
+
+tt_app <- shiny_tests( 
+    tests_to_tt(tests, pipeline_dir="...Tail Tools output directory..."), 
+    title="Tail Tools differential tests" )
+tt_app
+```
 
