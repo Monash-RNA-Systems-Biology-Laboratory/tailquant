@@ -279,13 +279,16 @@ demux_reads <- function(
                     yield(dplyr::select(df, readname, has_end, has_tail, tail=poly_a_length))
                 }
                 
-                
-                lines <- rbind(
-                    paste0("@",df$readname),
-                    df$read_1_seq,
-                    rep("+",nrow(df)),
-                    df$read_1_qual)
-                writeLines(lines, con=con)
+                if (nrow(df)) {
+                    # This code will write a single @ is df has now rows :-(
+                    # Hence the if.
+                    lines <- rbind(
+                        paste0("@",df$readname),
+                        df$read_1_seq,
+                        rep("+",nrow(df)),
+                        df$read_1_qual)
+                    writeLines(lines, con=con)
+                }
             })
         
         if (verbose) {
