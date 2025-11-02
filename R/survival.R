@@ -121,7 +121,7 @@ km_complete <- function(km, min_tail=0, max_tail=NULL) {
 site_reads_into <- function(dest_filename, reads_filename, sites, site_pad, site_upstrand) {
     sites <- dplyr::collect(sites)
     
-    has_umis <- "umi" %in% colnames(open_dataset(reads_filename))
+    has_umis <- "umi" %in% colnames(arrow::open_dataset(reads_filename))
     
     yield <- local_write_parquet(dest_filename)
     template <- dplyr::tibble(

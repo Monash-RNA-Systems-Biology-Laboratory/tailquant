@@ -20,10 +20,10 @@ Install:
 * STAR (version 2.7.11b or higher)
 * seqtk (optional, version 1.3 or higher)
 
-Then within R install BiocManager and use BiocManager to install this Git repository:
+Then within R install the `BiocManager` and `remotes` packages, and use `BiocManager` to install this Git repository:
 
 ```r
-install.packages("BiocManager")
+install.packages(c("BiocManager", "remotes"))
 
 BiocManager::install("Monash-RNA-Systems-Biology-Laboratory/tailquant")
 ```
@@ -33,7 +33,6 @@ BiocManager::install("Monash-RNA-Systems-Biology-Laboratory/tailquant")
 tailquant can ingest the output of our earlier Tail Tools pipeline.
 
 ```r
-# Package needs to be installed for multiprocessing to work
 library(tailquant)
 
 # Enable multiprocessing.
@@ -70,7 +69,6 @@ Due to the primers used, the poly(T) sequence is expected to be of length at lea
 We also sometimes observe read pairs where there is a long span of "T"s in read 1. We think these are not real, and should be filtered. 
 
 ```r
-# Package needs to be installed for multiprocessing to work
 library(tailquant)
 
 # Enable multiprocessing.
@@ -91,20 +89,21 @@ future::plan(future::multicore, workers=6)
 # Step 1 loads all of the read pairs into a parquet file, 
 # and calls samples, quality clipping, poly(A), and poly(T) lengths.
 ingest_read_pairs(
-    out_prefix="reads",   # <- A file called reads.parquet will be created
-    reads1="reads1.fastq.gz",
-    reads2="reads2.fastq.gz",
-    clip_quality_char="I", # <- Check this is appropriate
-    samples=samples)
+     out_prefix="reads"   # <- A file called reads.parquet will be created
+    ,reads1="reads1.fastq.gz"
+    ,reads2="reads2.fastq.gz"
+    ,clip_quality_char="I" # <- Check this is appropriate
+    ,samples=samples
+    )
 
 # You can now examine reads.peek.txt and reads.report.html to assess quality.
 
 # Step 2 produces demultiplexed fastq files from the parquet file, suitable for Tail Tools.
 demux_reads(
-    out_dir="my_output_dir", 
-    in_file="reads.parquet",
-    max_t_read_1=20   # (default) Discard any reads with a run of Ts longer than this in read 1
-    #, min_t=13       # Optionally discard any read pairs without poly(T) in read 2 
+     out_dir="my_output_dir" 
+    ,in_file="reads.parquet"
+    ,max_t_read_1=20   # (default) Discard any reads with a run of Ts longer than this in read 1
+    #,min_t=13         # Optionally discard any read pairs without poly(T) in read 2 
     )
 
 ```
@@ -123,13 +122,13 @@ The poly(T) lengths can be used when ingesting Tail Tools output:
 # Process an existing Tail Tools pipeline, but use poly(T) lengths.
 # Creates a new directory called my_output_dir
 ingest_tt(
-    out_dir="my_output_dir", 
-    in_dir="my_tail_tools_pipeline_dir",
-    tail_source="read2", # Where to get tail lengths from.
-    read_pairs_file="reads.parquet",
-    min_tail=13,      # (default) Minimum "T"s to consider as having a poly(A) tail.
-    length_trim=0     # poly(T) should be fine reaching to the end of read2.
-)
+     out_dir="my_output_dir"
+    ,in_dir="my_tail_tools_pipeline_dir"
+    ,tail_source="read2" # Where to get tail lengths from.
+    ,read_pairs_file="reads.parquet"
+    ,min_tail=13      # (default) Minimum "T"s to consider as having a poly(A) tail.
+    ,length_trim=0     # poly(T) should be fine reaching to the end of read2.
+    )
 ```
 
 
@@ -182,8 +181,9 @@ Tests for tailquant can be converted to to work with the older Tail Tools softwa
 library(tailtools)
 
 tt_app <- shiny_tests( 
-    tests_to_tt(tests, pipeline_dir="...Tail Tools output directory..."), 
-    title="Tail Tools differential tests" )
+    tests_to_tt(tests, pipeline_dir="...Tail Tools output directory..."),
+    title="Tail Tools differential tests")
+
 tt_app
 ```
 
