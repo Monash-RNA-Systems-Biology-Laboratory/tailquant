@@ -98,13 +98,14 @@ site_ui <- function(tq, max_tail=NA) {
         shiny::uiOutput("site_info"),
         bslib::navset_underline(
             header=shiny::p(),
+            bslib::nav_panel("Blank", "This tab intentionally left blank, requires no computation to update."),
             bslib::nav_panel("Site table", DT::DTOutput("read_counts", fill=FALSE)),
             bslib::nav_panel("Site reverse cumulative distribution", plot_ui("survival_plot", width=1000, height=600)),
             bslib::nav_panel("Site density", plot_ui("density_plot", width=1000, height=600)),
             bslib::nav_panel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
             bslib::nav_panel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
             bslib::nav_panel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            bslib::nav_panel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800))),
+            bslib::nav_panel("Multi-site heatmap", plot_ui("heatmap", width=1000, height=800))),
         
         shiny::div(style="height: 800px;"))
     
