@@ -55,22 +55,22 @@ site_ui <- function(tq, max_tail=NA) {
             shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
             shiny::checkboxInput("cpm", "Plots show expression level.", value=TRUE),
             shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
-            shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length."),
-        )
-    )
+            shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length.")))
     
     samples_panel <- bslib::nav_panel("Sample selection",
         shiny::p(),
         shiny::checkboxGroupInput("which_samples", "Samples to show", 
             choices=tq@samples$sample,
             selected=tq@samples$sample),
-        shiny::p("Note: This sample selection does not affect aggregated tail length statistics, just plots showing individual samples.")
-    )
+        shiny::p("Note: This sample selection does not affect aggregated tail length statistics, just plots showing individual samples."))
     
     table_panel <- bslib::nav_panel("Site selection",
-        shiny::textInput("search", label="", value="", placeholder="Search, see explanation, examples: top=1000 name=^PAP", width="50%"),
-        DT::DTOutput("table", fill=FALSE)
-    )
+        shiny::fluidRow(
+            shiny::column(width=6,
+                shiny::textInput("search", label="", value="", placeholder="Search, see explanation, examples: top=1000 name=^PAP")),
+            shiny::column(width=1, offset=5, style="text-align: right",
+                shiny::downloadButton("table_download", "CSV"))),
+        DT::DTOutput("table", fill=FALSE))
     
     explanation_panel <- bslib::nav_panel("Explanation",
         shiny::p(),
@@ -85,8 +85,7 @@ site_ui <- function(tq, max_tail=NA) {
         shiny::p("n_tail_ended = Number of UMIs with a poly(A) tail that ended before the end of the read."),
         shiny::p("tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length."),
         #shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first."),
-        shiny::p("cpm = Counts Per Million, calculated from n.")
-    )
+        shiny::p("cpm = Counts Per Million, calculated from n."))
     
     ui <- shiny::tagList(
         shiny::wellPanel(
@@ -94,9 +93,7 @@ site_ui <- function(tq, max_tail=NA) {
                 table_panel,
                 options_panel,
                 samples_panel,
-                explanation_panel
-            )
-        ),
+                explanation_panel)),
         shiny::p(),
         shiny::uiOutput("site_info"),
         bslib::navset_underline(
@@ -107,11 +104,9 @@ site_ui <- function(tq, max_tail=NA) {
             bslib::nav_panel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
             bslib::nav_panel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
             bslib::nav_panel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            bslib::nav_panel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800))
-        ),
+            bslib::nav_panel("Mult-site heatmap", plot_ui("heatmap", width=1000, height=800))),
         
-        shiny::div(style="height: 800px;")
-    )
+        shiny::div(style="height: 800px;"))
     
     ui
 }
@@ -171,10 +166,10 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     })
     
     selected <- reactive({
-        req(input$table_rows_current)
+        req(input$table_rows_all)
         req(nrow(df()) > 0)
         
-        row <- input$table_rows_current[1]
+        row <- input$table_rows_all[1]
         if (length(input$table_rows_selected) == 1 &&
             input$table_rows_selected %in% input$table_rows_current)
             row <- input$table_rows_selected
@@ -185,7 +180,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
         
         req(nrow(result) == 1)
         result
-    })
+    }) |> debounce(10, priority=-1) #Delay a bit to let table go first
     
     selected_samples <- reactive({
         result <- dplyr::filter(samples, sample %in% .env$input$which_samples)
@@ -232,7 +227,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
                 rownames=FALSE, 
                 #width="100%", 
                 #class='compact cell-border hover',
-                #extensions='Buttons'
+                #extensions="Buttons",
                 options=list(searching=FALSE)) |>
             DT::formatStyle(names(df_show), lineHeight="100%", paddingTop="5px", paddingBottom="5px") |>
             #DT::formatRound(c("tightness"),2) |>
@@ -240,6 +235,13 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             DT::formatRound(c("multimapping"),2) |>
             DT::formatStyle(names(df_show), "white-space"="nowrap")
     })
+    
+    output$table_download <- shiny::downloadHandler(
+        filename="sites.csv",
+        content=\(filename) {
+            # Download in currently sorted order
+            readr::write_csv(df()[input$table_rows_all,], filename)
+        })
     
     output$site_info <- shiny::renderUI({
         req(selected())

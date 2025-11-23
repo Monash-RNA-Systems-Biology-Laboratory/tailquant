@@ -5,82 +5,99 @@
 # Even suppressed sites perform suppression.
 #
 call_sites_inner <- function(vec, min_reads=50, site_pad=10, suppression_pad=50) {
-    vec <- as.numeric(vec)
     n <- length(vec)
     
-    # Uniform convolution
     padder <- rep(0, site_pad)
     
     #uniform <- rep(1,site_pad*2+1)
     triangle <- c(seq_len(site_pad), site_pad+1, rev(seq_len(site_pad))) / (site_pad+1)
     
-    spread <- stats::filter(c(padder,vec,padder), triangle)[(site_pad+1):(site_pad+n)]
+    # Convolution. This is where most of the time in this function is spent. Lots of pointlessly convolving zeros!
+    spread <- stats::filter(c(padder,as.numeric(vec),padder), triangle)[(site_pad+1):(site_pad+n)]
     
-    #triangle <- c(seq_len(site_pad), site_pad+1, rev(seq_len(site_pad)))
-    #tiebreaker <- stats::filter(c(padder,vec,padder), triangle)[(site_pad+1):(site_pad+n)]
-    #tiebreaker <- vec
-    
-    # Consider positions in order of convolved depth.
-    ordering <- order(spread, decreasing=TRUE)
+    # Consider positions exceeding depth threshold, in order of depth.
+    ordering <- which(spread >= min_reads)
+    ordering <- ordering[order(spread[ordering], decreasing=TRUE)]
     
     is_suppressed <- rep(FALSE, n)
     is_site <- rep(FALSE, n)
     
     for(i in ordering) {
-        if (spread[i] < min_reads) break
         is_site[i] <- !is_suppressed[i]
         is_suppressed[max(1,i-suppression_pad) : min(n,i+suppression_pad)] <- TRUE
     }
     
-    which(is_site)
+    dplyr::tibble(
+        pos = which(is_site),
+        depth = spread[pos] )
 }
 
 call_sites <- function(
         bigwig_dir, genome, 
-        min_reads=50, site_pad=10, suppression_pad=50,
-        downstrand_length=12) {
+        min_reads=10, site_pad=10, suppression_pad=50) {
     depth_fwd <- rtracklayer::import(file.path(bigwig_dir, "total.fwd.end.bigwig"), "bigwig", as="RleList")
     depth_rev <- rtracklayer::import(file.path(bigwig_dir, "total.rev.end.bigwig"), "bigwig", as="RleList")
     
     sites <- list(dplyr::tibble(chr=character(0), pos=numeric(0), strand=numeric(0)))
     
     for(name in names(depth_fwd)) {
+        #message(name, " +")
         this_sites <- call_sites_inner(
             depth_fwd[[name]], min_reads=min_reads, site_pad=site_pad, suppression_pad=suppression_pad)
             
-        sites[[length(sites)+1]] <- dplyr::tibble(chr=name, pos=this_sites, strand=1)
+        sites[[length(sites)+1]] <- dplyr::tibble(chr=name, pos=this_sites$pos, strand=1, depth=this_sites$depth)
     }
     
     for(name in names(depth_rev)) {
+        #message(name, " -")
         this_sites <- call_sites_inner(
             rev(depth_rev[[name]]), min_reads=min_reads, site_pad=site_pad, suppression_pad=suppression_pad)
-        this_sites <- length(depth_rev[[name]])+1 - this_sites
+        this_sites$pos <- length(depth_rev[[name]])+1 - this_sites$pos
             
-        sites[[length(sites)+1]] <- dplyr::tibble(chr=name, pos=this_sites, strand=-1)
+        sites[[length(sites)+1]] <- dplyr::tibble(chr=name, pos=this_sites$pos, strand=-1, depth=this_sites$depth)
     }
     
     sites <- dplyr::bind_rows(sites)
     
-    ranges <- sites |>
-        dplyr::transmute(seqnames=chr, start=pos, end=pos, strand=ifelse(strand>=0,"+","-")) |>
-        GenomicRanges::GRanges(seqinfo=Biostrings::seqinfo(genome))
+    sites$location <- paste0(sites$chr,":",sites$pos," ",strand_to_char(sites$strand))
     
-    downstrands <- GenomicRanges::flank(ranges, downstrand_length, start=FALSE) |>
-        GenomicRanges::trim()
-    
-    sites$downstrand <- BSgenome::getSeq(genome, downstrands) |> as.character()
-    
-    #penalty <- downstrand_prop / (1-downstrand_prop)
-    
-    #sites$downstrand_a_length <- purrr::map_dbl(sites$downstrand, \(seq) {
-    #    scan_from(seq,"A",1,nchar(seq),penalty)[2]
-    #})
-    
-    sites$a_count <- stringr::str_count(sites$downstrand, "A")
+    # Assign a temporary name
+    sites$site <- paste0("site", seq_len(nrow(sites)))
     
     sites
 }
 
+qc_sites <- function(sites, genome, sited_read_parquets, tail_excess_required=5, min_tail=13, downstrand_length=200, a_prop=0.6) {
+    # Collect observed tail length
+    tail_means <- arrow::open_dataset(sited_read_parquets) |>
+        dplyr::filter(tail >= .env$min_tail) |>
+        dplyr::summarize(mean_tail=mean(tail), .by=c(site)) |>
+        dplyr::collect()
+    
+    sites$mean_tail <- tail_means$mean_tail[ match(sites$site, tail_means$site) ]
+    
+    # Collect genomic tail length
+    ranges <- sites |>
+        dplyr::transmute(seqnames=chr, start=pos, end=pos, strand=ifelse(strand>=0,"+","-")) |>
+        GenomicRanges::GRanges(seqinfo=Biostrings::seqinfo(genome))
+    
+    downstrands <- suppressWarnings(GenomicRanges::flank(ranges, downstrand_length, start=FALSE)) |>
+        GenomicRanges::trim()
+    
+    sites$downstrand <- BSgenome::getSeq(genome, downstrands) |> as.character()
+    
+    penalty <- a_prop / (1-a_prop)
+    
+    sites$genomic_a_length <- purrr::map_dbl(sites$downstrand, \(seq) {
+        scan_from(seq,"A",1,nchar(seq),penalty)[2]
+    })
+    
+    #sites$a_count <- stringr::str_count(sites$downstrand, "A")
+    
+    sites$keep <- sites$mean_tail >= sites$genomic_a_length + tail_excess_required
+    
+    sites
+}
 
 
 # For all exons overlapping the extension, set extension$end to exon$start-1
@@ -89,8 +106,29 @@ call_sites <- function(
 last <- function(vec) vec[length(vec)]
 
 transcript_to_ranges <- function(gene_id, transcript_id, exons, cds, pad, extension, noncoding_prop) {
+    # Sanity check
+    assertthat::assert_that( length(unique(c(exons$seqnames, cds$seqnames))) == 1 )
+    assertthat::assert_that( length(unique(c(exons$strand, cds$strand))) == 1 )
+    
+    # Fixup we needed for some dodgy yeast annotation
+    start <- min(exons$start, cds$start)
+    end <- max(exons$end, cds$end)
+    cds_end <- if (is.null(cds)) NA else max(cds$end)
+    
+    if (exons$start[1] > start) {
+        warning("Exon start extended to cover CDS start for ", transcript_id)
+        exons$start[1] <- start
+    }
+    n <- nrow(exons)
+    if (exons$end[n] < end) {
+        warning("Exon end extended to cover CDS end for ", transcript_id)
+        exons$end[n] <- end
+    }
+    
+    # Choose a trim point, either after the CDS or a certain proportion if non-coding.
     if (!is.null(cds)) {
         trim_to <- last(cds$end)+1
+        relation <- "3'UTR"
     }  else {
         widths <- exons$end-exons$start+1
         total <- sum(widths)
@@ -101,6 +139,7 @@ transcript_to_ranges <- function(gene_id, transcript_id, exons, cds, pad, extens
             i <- i+1
         }
         trim_to <- exons$start[i] + remainder - 1
+        relation <- "3'Noncoding"
     }
     
     assertthat::assert_that(last(exons$end)+1 >= trim_to) 
@@ -115,12 +154,18 @@ transcript_to_ranges <- function(gene_id, transcript_id, exons, cds, pad, extens
     
     exons$gene_id <- gene_id
     exons$transcript_id <- transcript_id
+    exons$relation <- relation
+    exons$transcript_end <- end
+    exons$cds_end <- cds_end
     if (extension <= 0)
         extensions <- NULL
     else
         extensions <- dplyr::tibble(
-            type="extension", gene_id, transcript_id, seqnames, strand,
-            start=last(exons$end)+1, end=start+extension-1)
+            type="extension", gene_id, transcript_id, 
+            seqnames, strand, transcript_end=end, cds_end,
+            relation="Downstrand",
+            start=last(exons$end)+1, 
+            end=start+extension-1)
     
     list(
         exons=exons,
@@ -128,7 +173,27 @@ transcript_to_ranges <- function(gene_id, transcript_id, exons, cds, pad, extens
 }
 
 
-gff_to_site_assigner <- function(gff_features, pad=10, extension=750, noncoding_prop=1/3) {
+# Choose the first matching column name from a data frame
+find_a_column <- function(df, options, default) {
+    result <- default
+    for(name in options) {
+        if (name %in% names(df)) {
+            result <- df[[name]]
+            break
+        }
+    }
+    result
+}
+
+# Find the highest ranking option in values
+first_match <- function(values, options) {
+    i <- na.omit(match(values, options))
+    if (length(i) == 0) return(NA_character_)
+    options[min(i)]
+}
+
+
+gff_to_site_assigner <- function(gff_features, extension, pad=10, noncoding_prop=1/3) {
     # Convert GRanges to signed-position ranges, and ensure sorted by signed-start position.
     gff_features <- gff_features |>
         granges_to_sranges() |>
@@ -155,15 +220,21 @@ gff_to_site_assigner <- function(gff_features, pad=10, extension=750, noncoding_
     assertthat::assert_that(all( cds$transcript_id %in% transcript_ids ))
     
     transcripts <- children |>
-        dplyr::select(transcript_id=ID, gene_id=Parent, biotype) |>
+        dplyr::select(transcript_id=ID, gene_id=Parent) |>
         dplyr::filter(transcript_id %in% transcript_ids) |>
         dplyr::left_join(exons, by="transcript_id") |>
         dplyr::left_join(cds, by="transcript_id")
     
+    gene_ids_with_cds <- unique(transcripts$gene_id[ !purrr::map_dbl(transcripts$cds,is.null) ])
+    
     # Genes are things that have transcripts!
-    genes <- gff_features |>
-        dplyr::select(gene_id=ID, symbol=Name, product=description, gene_biotype=biotype) |>
-        dplyr::filter(gene_id %in% transcripts$gene_id)
+    # Try to find the information we want about each gene.
+    genes_raw <- dplyr::filter(gff_features, ID %in% .env$transcripts$gene_id) 
+    genes <- dplyr::tibble(gene_id = genes_raw$ID)
+    genes$name <- find_a_column(genes_raw, c("Name"), NA_character_)
+    genes$product <- find_a_column(genes_raw, c("description", "Product"), NA_character_)
+    genes$biotype <- find_a_column(genes_raw, c("biotype", "Biotype"), NA_character_)
+    genes$has_cds <- genes$gene_id %in% gene_ids_with_cds
     
     transcripts <- dplyr::left_join(transcripts, genes, by="gene_id")
     
@@ -190,37 +261,102 @@ gff_to_site_assigner <- function(gff_features, pad=10, extension=750, noncoding_
     # If pad==0, we might have some empty exons. We can discard them now.
     exon_ranges <- dplyr::filter(exon_ranges, end >= start)
     
-    exon_ranges$color <- "#888800"
-    ext_ranges$color <- "#880088"
+    exon_ranges$is_extension <- TRUE
+    ext_ranges$is_extension <- FALSE
     result <- dplyr::bind_rows(exon_ranges, ext_ranges)
     
+    # Annotate with gene information
+    result <- dplyr::left_join(result, genes, by="gene_id")
+    
+    # Remove prefix used in ENSEMBL GFFs
+    result$gene_id <- gsub("^gene:", "", result$gene_id)
+    
+    
+    # Some of the ranges in result may overlap, and may overlap between genes.
+    # We will ignore such regions for assignment purposes.
+    # We perform a disjoin operation so such regions can be identified.
+    
+    # Disjoin and summarize
+    combine <- function(vec) paste(unique(sort(vec)), collapse = "/")
+
+    dj <- sranges_disjoin(result)
+    hits <- sranges_find_overlaps(dj, result)
+    df <- dplyr::select(result[hits$index2,], !c(seqnames,start,end,strand))
+    df$index1 <- hits$index1
+    df <- df |>
+        dplyr::summarize(
+            .by=index1,
+            good = length(unique(gene_id)) == 1,
+            gene_id = combine(gene_id),
+            name = combine(name),
+            product = combine(product),
+            biotype = combine(biotype),
+            has_cds = any(has_cds),
+            transcript_end = max(transcript_end),
+            cds_end = if (all(is.na(cds_end))) NA else max(cds_end, na.rm=TRUE),
+            relation = first_match(relation, c("3'UTR","3'Noncoding","Downstrand")))
+    df <- dplyr::bind_cols(dj[df$index1,], dplyr::select(df, !index1))
+    
+    df$type <- "region"
+    df$color <- ifelse(df$relation == "Downstrand", "#880088", "#888800")
+    
+    assigner <- df |>
+        dplyr::filter(good) |>
+        dplyr::select(!good)
+    
+    ambiguous <- df |>
+        dplyr::filter(!good) |>
+        dplyr::select(!good)
+    
     # Convert back to conventional GRanges representation
-    sranges_to_granges(result)
+    list(
+        assigner = sranges_to_granges(assigner, sort=TRUE),
+        ambiguous = sranges_to_granges(ambiguous, sort=TRUE))
 }
 
 
-sites_assign <- function(sites, assigner, gff) {
-    gff <- as.data.frame(gff) |>
-        dplyr::mutate(strand = strand_to_int(strand))
+sites_assign <- function(sites, assigner) {
     assigner <- as.data.frame(assigner) |>
         dplyr::mutate(strand = strand_to_int(strand))
     
+    if (is.null(assigner$product)) 
+        assigner$product <- NA_character_
+    if (is.null(assigner$name)) 
+        assigner$name <- NA_character_
+    if (is.null(assigner$biotype)) 
+        assigner$biotype <- NA_character_
+    if (is.null(assigner$relation)) 
+        assigner$relation <- NA_character_
+    if (is.null(assigner$has_cds)) 
+        assigner$has_cds <- NA
+    if (is.null(assigner$transcript_end))
+        assigner$transcript_end <- NA_real_
+    if (is.null(assigner$cds_end))
+        assigner$cds_end <- NA_real_
+    
+    # Guaranteed 1:1 or 1:0
     overlaps <- find_overlaps(
         sites$chr, sites$pos, sites$pos, sites$strand,
-        assigner$seqnames, assigner$start, assigner$end, assigner$strand) |>
-        tidyr::nest(.by=index1)
+        assigner$seqnames, assigner$start, assigner$end, assigner$strand)
     
-    sites$gene_id <- NA
-    sites$gene_ids <- list(NULL)
-    for(i in seq_len(nrow(overlaps))) {
-        i1 <- overlaps$index1[i]
-        i2 <- overlaps$data[[i]]$index2
-        genes <- unique(assigner$gene_id[ i2 ])
-        if (length(genes) == 1) {
-            sites$gene_id[i1] <- genes
-        }
-        sites$gene_ids[[i1]] <- genes
-    }
+    i1 <- overlaps$index1
+    i2 <- overlaps$index2
+    sites$gene_id <- NA_character_
+    sites$gene_id[i1] <- assigner$gene_id[i2]
+    sites$name <- NA_character_
+    sites$name[i1] <- assigner$name[i2]
+    sites$product <- NA_character_
+    sites$product[i1] <- assigner$product[i2]
+    sites$biotype <- NA_character_
+    sites$biotype[i1] <- assigner$biotype[i2]
+    sites$has_cds <- NA
+    sites$has_cds[i1] <- as.logical(assigner$has_cds[i2])
+    sites$relation <- NA_character_
+    sites$relation[i1] <- assigner$relation[i2]
+    sites$pos_vs_transcript_end <- NA_real_
+    sites$pos_vs_transcript_end[i1] <- sites$pos[i1]*sites$strand[i1] - as.numeric(assigner$transcript_end[i2])
+    sites$pos_vs_cds_end <- NA_real_
+    sites$pos_vs_cds_end[i1] <- sites$pos[i1]*sites$strand[i1] - as.numeric(assigner$cds_end[i2])
     
     sites
 }
@@ -228,6 +364,9 @@ sites_assign <- function(sites, assigner, gff) {
 
 #' @export
 sites_give_id <- function(sites) {
+    # Remove any existing site name
+    sites$site <- NULL
+    
     ## Name unassigned sites by position
     
     sites_unassigned <- dplyr::filter(sites, is.na(gene_id)) |>
@@ -242,19 +381,20 @@ sites_give_id <- function(sites) {
     # Get gene ids and symbols
     genes <- sites_assigned |>
         dplyr::distinct(gene_id, name) |>
-        dplyr::mutate(name = ifelse(is.na(name), gene_id, name))
+        dplyr::mutate(name = ifelse(is.na(name) | name=="", gene_id, name))
     
     assertthat::assert_that(length(unique(genes$gene_id)) == nrow(genes))
     
     # Rename symbols if non-unique
-    while(length(unique(genes$name)) < nrow(genes)) {
+    if (length(unique(genes$name)) < nrow(genes)) {
         genes <- genes |>
             dplyr::mutate(.by=name,
                 modified = (dplyr::n() > 1),
                 name = if (dplyr::n() > 1) paste0(name,"-",gene_id) else name)
-        warning("Renaming genes to deduplicate: ", paste(genes$name[genes$modified],collapse=" "))
+        warning("Renaming genes to deduplicate: ", paste(sort(genes$name[genes$modified]),collapse=" "))
         genes$modified <- NULL
     }
+    assertthat::assert_that(length(unique(genes$name)) == nrow(genes), msg="Failed to deduplicate gene names.")
     
     # Name assigned sites with gene symbol and position number
     sites_assigned <- sites_assigned |>

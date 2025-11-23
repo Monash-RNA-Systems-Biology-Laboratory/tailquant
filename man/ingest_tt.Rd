@@ -8,7 +8,7 @@ ingest_tt(
   out_dir,
   in_dir,
   tail_source,
-  read_pairs_file = NULL,
+  read_pairs_dir = NULL,
   site_file = NULL,
   site_pad = 10,
   site_upstrand = 300,
@@ -19,9 +19,9 @@ ingest_tt(
 )
 }
 \arguments{
-\item{tail_source}{Should be one of "tt", "read1", or "read2". If "tt", Tail Tools tail lengths are used. If "read1", poly(A) tail lengths from read 1 are used. If "read2", poly(T) tail lengths from read 2 are used. If using "read1" or "read2", read_pairs_file must be given.}
+\item{tail_source}{Should be one of "tt", "read1", or "read2". If "tt", Tail Tools tail lengths are used. If "read1", poly(A) tail lengths from read 1 are used. If "read2", poly(T) tail lengths from read 2 are used. If using "read1" or "read2", read_pairs_dir must be given.}
 
-\item{read_pairs_file}{Parquet file or parquet files produced by ingest_read_pairs().}
+\item{read_pairs_dir}{Parquet file directory or directories produced by ingest_read_pairs().}
 }
 \description{
 Ingest Tail Tools output

@@ -2,10 +2,6 @@
 # Filename convention
 fn <- function(dir, subdir, ...) file.path(dir, subdir, paste0(...))
 
-ensure_dir <- function(...) {
-    dir.create(file.path(...), showWarnings=FALSE)
-}
-
 load_parquet <- function(dir, subdir, ...) {
     arrow::open_dataset(fn(dir, subdir, ...))
 }
@@ -91,14 +87,14 @@ load_tt_clips <- function(clips_file) {
 }
 
 # Helper function to load tailquant clipping information for poly(T)
-load_read2_clips <- function(read_names, read_pairs_file) {
+load_read2_clips <- function(read_names, read_pairs_dir) {
     # Reconcile naming. Tail Tools will be dealing with names containing barcode and umi
     read_names <- unique(read_names)
     parts <- stringr::str_match(read_names, "(.*)_.*_.*")
     base_read_names <- parts[,2]
     reads_wanted <- tibble::tibble(readname=base_read_names, read=read_names)
     
-    arrow::open_dataset(read_pairs_file) |>
+    arrow::open_dataset(read_pairs_dir) |>
         dplyr::select(readname, length=read_2_length, tail_start=poly_t_start, tail=poly_t_length, umi) |>
         dplyr::inner_join(reads_wanted, by="readname") |>
         dplyr::select(!readname) |>
@@ -106,14 +102,14 @@ load_read2_clips <- function(read_names, read_pairs_file) {
 }
 
 # Helper function to load tailquant clipping information for poly(A)
-load_read1_clips <- function(read_names, read_pairs_file) {
+load_read1_clips <- function(read_names, read_pairs_dir) {
     # Reconcile naming. Tail Tools will be dealing with names containing barcode and umi
     read_names <- unique(read_names)
     parts <- stringr::str_match(read_names, "(.*)_.*_.*")
     base_read_names <- parts[,2]
     reads_wanted <- tibble::tibble(readname=base_read_names, read=read_names)
     
-    arrow::open_dataset(read_pairs_file) |>
+    arrow::open_dataset(read_pairs_dir) |>
         dplyr::select(readname, length=read_1_length, tail_start=poly_a_start, tail=poly_a_length, umi) |>
         dplyr::inner_join(reads_wanted, by="readname") |>
         dplyr::select(!readname) |>
@@ -131,7 +127,7 @@ load_read1_clips <- function(read_names, read_pairs_file) {
 #' @export
 load_bam_into <- function(
         dest_file, bam_file, 
-        tail_source, read_pairs_file=NULL, clips_file=NULL,
+        tail_source, read_pairs_dir=NULL, clips_file=NULL,
         limit=NA, filter_secondary=TRUE) {
     
     assertthat::assert_that(file.exists(bam_file))
@@ -185,9 +181,9 @@ load_bam_into <- function(
             if (tail_source == "tt") {
                 clips <- tt_clips
             } else if (tail_source == "read2") {
-                clips <- load_read2_clips(alignments$read, read_pairs_file)
+                clips <- load_read2_clips(alignments$read, read_pairs_dir)
             } else if (tail_source == "read1") {
-                clips <- load_read1_clips(alignments$read, read_pairs_file)
+                clips <- load_read1_clips(alignments$read, read_pairs_dir)
             } else {
                 stop("Unknown tail source.")
             }
@@ -207,15 +203,15 @@ load_bam_into <- function(
 
 #' Ingest Tail Tools output
 #'
-#' @param tail_source Should be one of "tt", "read1", or "read2". If "tt", Tail Tools tail lengths are used. If "read1", poly(A) tail lengths from read 1 are used. If "read2", poly(T) tail lengths from read 2 are used. If using "read1" or "read2", read_pairs_file must be given.
+#' @param tail_source Should be one of "tt", "read1", or "read2". If "tt", Tail Tools tail lengths are used. If "read1", poly(A) tail lengths from read 1 are used. If "read2", poly(T) tail lengths from read 2 are used. If using "read1" or "read2", read_pairs_dir must be given.
 #'
-#' @param read_pairs_file Parquet file or parquet files produced by ingest_read_pairs().
+#' @param read_pairs_dir Parquet file directory or directories produced by ingest_read_pairs().
 #'
 #' @export
 ingest_tt <- function(
         out_dir, in_dir,
         tail_source,
-        read_pairs_file=NULL,
+        read_pairs_dir=NULL,
         site_file=NULL,
         site_pad=10,
         site_upstrand=300,
@@ -230,8 +226,6 @@ ingest_tt <- function(
     
     # We can use more tail lengths if getting them from read 2
     must_be_close_to_site <- tail_source != "read2"
-    if (!must_be_close_to_site)
-        message("Tail lengths from read 2, more read-pairs provide tail lengths.")
     
     if (1 %in% steps) {
         message("Step 1: samples")
@@ -264,7 +258,7 @@ ingest_tt <- function(
                 file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
                 bam_file,
                 tail_source=tail_source, 
-                read_pairs_file=read_pairs_file,
+                read_pairs_dir=read_pairs_dir,
                 clips_file=clips_file,
                 limit=limit, 
                 filter_secondary=FALSE) # Tail Tools has already filtered to one alignment per read
@@ -314,11 +308,7 @@ ingest_tt <- function(
     }
     
     # Delete any cached files, as they may be out of date
-    cache_dir <- file.path(out_dir, "cache")
-    cached_files <- list.files(cache_dir, full.names=TRUE)
-    for(filename in cached_files) {
-        unlink(filename)
-    }
+    clean_up_files(file.path(out_dir, "cache"), "\\.qs2$")
 }
 
 

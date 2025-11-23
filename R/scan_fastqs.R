@@ -88,11 +88,83 @@ scan_paired_chunks <- function(
 }
 
 
+ingest_read_pairs_inner <- function(
+        out_file, reads1, reads2, 
+        samples=NULL, 
+        max_mismatch=1,
+        clip_quality_char="I", clip_penalty=4,
+        poly_penalty=1000, suffix_penalty=4,
+        limit=Inf, seed=563) {
+    #cli::cli_progress_bar(format="Scanning read pairs | {scales::comma(cli::pb_current)} done | {scales::comma(cli::pb_rate_raw*60)}/m | {cli::pb_elapsed}")
+    
+    #if (subsample >= 1) {
+    r1 <- file(reads1, open="r")
+    withr::defer(close(r1))
+    r2 <- file(reads2, open="r")
+    withr::defer(close(r2))
+    #} else {
+    #    r1 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads1)," ",subsample), "r")
+    #    withr::defer(close(r1))
+    #    r2 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads2)," ",subsample), "r")
+    #    withr::defer(close(r2))
+    #}
+    
+    yield <- local_write_parquet(out_file)
+    
+    # Configure schema
+    yield(tibble::tibble(
+        readname=character(0),
+        sample=character(0),
+        barcode=character(0),
+        barcode_mismatches=numeric(0), 
+        umi=character(0),
+        read_1_seq=character(0),
+        read_1_qual=character(0),
+        read_1_length=numeric(0),
+        read_1_clip=numeric(0),
+        poly_a_start=numeric(0),
+        poly_a_length=numeric(0),
+        poly_a_suffix=numeric(0),
+        read_1_poly_t_start=numeric(0),
+        read_1_poly_t_length=numeric(0),
+        read_2_seq=character(0),
+        read_2_qual=character(0),
+        read_2_length=numeric(0),
+        read_2_clip=numeric(0),
+        poly_t_start=numeric(0),
+        poly_t_length=numeric(0)))
+    
+    chunk <- 50000
+    total <- 0
+    repeat {
+        lines_to_read <- 4*max(0, min(chunk, limit-total))
+        chunk1 <- readLines(r1, n=lines_to_read)
+        chunk2 <- readLines(r2, n=lines_to_read)
+        stopifnot(length(chunk1) == length(chunk2))
+        
+        n <- length(chunk1) %/% 4
+        total <- total+n
+        if (n == 0) break
+        
+        #cli::cli_progress_update(n)
+        
+        yield(scan_paired_chunks(
+            chunk1, chunk2, 
+            samples=samples, max_mismatch=max_mismatch,
+            clip_quality_char=clip_quality_char, clip_penalty=clip_penalty,
+            poly_penalty=poly_penalty, suffix_penalty=suffix_penalty))
+    }
+}
+
 #' Initial loading and processing of Pooled PAT-Seq data into a parquet file
 #'
 #' Extract barcodes, UMIs, clipping information and poly(A)/poly(T) lengths, producing a large parquet file.
 #'
-#' For subsampling, the seqtk command-line tool must be installed.
+#' By default assumes FASTQ files are gzipped and uses unpigz to decompress and pigz to recompress. pigz must be installed for this to work.
+#'
+#' @param decompressor Decompression program to use (with any needed flags). Input will be piped to this program. Use \code{"cat"} if FASTQ files are not compressed.
+#'
+#' @param compressor Compression program to use after splitting. Input will be piped to this program.
 #'
 #' @export
 ingest_read_pairs <- function(
@@ -101,89 +173,66 @@ ingest_read_pairs <- function(
         max_mismatch=1,
         clip_quality_char="I", clip_penalty=4,
         poly_penalty=1000, suffix_penalty=4,
-        limit=Inf, subsample=1, seed=563) {
+        limit=Inf, chunk_size=2e7, 
+        decompressor="unpigz", compressor="pigz --fast") {
     
     # Check/convert arguments
     samples <- ensure_samples(samples)
     
-    assertthat::assert_that(subsample >= 0.0 && subsample <= 1)
+    ensure_dir(out_prefix)
     
-    out_file <- paste0(out_prefix, ".parquet")
+    # Need to clean up any existing files, 
+    # or they might get lumped in with new output!
+    clean_up_files(out_prefix, "^read1")
+    clean_up_files(out_prefix, "^read2")
+    clean_up_files(out_prefix, "\\.parquet$")
     
-    # Begin
-    local({
-        cli::cli_progress_bar(format="Scanning read pairs | {scales::comma(cli::pb_current)} done | {scales::comma(cli::pb_rate_raw*60)}/m | {cli::pb_elapsed}")
-        
-        if (subsample >= 1) {
-            r1 <- file(reads1, open="r")
-            withr::defer(close(r1))
-            r2 <- file(reads2, open="r")
-            withr::defer(close(r2))
-        } else {
-            r1 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads1)," ",subsample), "r")
-            withr::defer(close(r1))
-            r2 <- pipe(paste0("seqtk sample -s",seed," ",shQuote(reads2)," ",subsample), "r")
-            withr::defer(close(r2))
+    message("Splitting read files.")
+    
+    list( 
+        list(prefix="read1", reads=reads1), 
+        list(prefix="read2", reads=reads2) ) |>
+    parallel_walk(\(item) {
+        command <- paste0(
+            "cat ", paste(shQuote(item$reads),collapse=" "),
+            " |", decompressor)
+        if (is.finite(limit)) {
+            command <- paste0(command, " |head -n ", sprintf("%.0f",ceiling(limit)*4))
         }
+        command <- paste0(command, 
+            " |split --filter='",compressor," >$FILE' -a 4 -l ", sprintf("%.0f",ceiling(chunk_size)*4), " - ", 
+            shQuote(file.path(out_prefix, item$prefix)))
         
-        yield <- local_write_parquet(out_file)
-        queue <- local_queue()
-        
-        withr::local_options(future.globals.maxSize=Inf)
-        
-        # Configure schema
-        yield(tibble::tibble(
-            readname=character(0),
-            sample=character(0),
-            barcode=character(0),
-            barcode_mismatches=numeric(0), 
-            umi=character(0),
-            read_1_seq=character(0),
-            read_1_qual=character(0),
-            read_1_length=numeric(0),
-            read_1_clip=numeric(0),
-            poly_a_start=numeric(0),
-            poly_a_length=numeric(0),
-            poly_a_suffix=numeric(0),
-            read_1_poly_t_start=numeric(0),
-            read_1_poly_t_length=numeric(0),
-            read_2_seq=character(0),
-            read_2_qual=character(0),
-            read_2_length=numeric(0),
-            read_2_clip=numeric(0),
-            poly_t_start=numeric(0),
-            poly_t_length=numeric(0)))
-        
-        chunk <- 50000
-        total <- 0
-        repeat {
-            lines_to_read <- 4*max(0, min(chunk, limit-total))
-            chunk1 <- readLines(r1, n=lines_to_read)
-            chunk2 <- readLines(r2, n=lines_to_read)
-            stopifnot(length(chunk1) == length(chunk2))
-            
-            n <- length(chunk1) %/% 4
-            total <- total+n
-            if (n == 0) break
-            
-            cli::cli_progress_update(n)
-            
-            future_result <- future::future(
-                scan_paired_chunks(
-                    chunk1, chunk2, 
-                    samples=samples, max_mismatch=max_mismatch,
-                    clip_quality_char=clip_quality_char, clip_penalty=clip_penalty,
-                    poly_penalty=poly_penalty, suffix_penalty=suffix_penalty), 
-                seed=NULL)
-            queue(\(item) yield(future::value(item)), future_result)
-        }
+        code <- system(command)
+        assertthat::assert_that(code == 0, msg="Splitting file failed")
     })
     
+    chunks <- list.files(out_prefix, "^read1") 
+    chunks <- gsub("^read1", "", chunks) |> sort()
+    
+    message("Interpreting reads.")
+    
+    parallel_walk(chunks, \(chunk) {
+        ingest_read_pairs_inner(
+            out_file = file.path(out_prefix,paste0(chunk, ".parquet")),
+            reads1 = file.path(out_prefix,paste0("read1", chunk)),
+            reads2 = file.path(out_prefix,paste0("read2", chunk)),
+            samples=samples, max_mismatch=max_mismatch,
+            clip_quality_char=clip_quality_char, clip_penalty=clip_penalty,
+            poly_penalty=poly_penalty, suffix_penalty=suffix_penalty)
+    })
+    
+    # Decompressed fastq files can be very large. 
+    # Delete them when done.
+    clean_up_files(out_prefix, "^read1")
+    clean_up_files(out_prefix, "^read2")
+    
+    message("Generating report.")
+    
     # Generate some diagnostic files
-    reads_peek(in_file=out_file, out_file=paste0(out_prefix,".peek.txt"))
-    reads_report(in_file=out_file, out_file=paste0(out_prefix,".report.html"))
+    reads_peek(in_dir=out_prefix, out_file=paste0(out_prefix,".peek.txt"))
+    reads_report(in_dir=out_prefix, out_file=paste0(out_prefix,".report.html"))
 }
-
 
 #' Demultiplex into FASTQ files from parquet file
 #'
@@ -193,7 +242,7 @@ ingest_read_pairs <- function(
 #'
 #' @param out_dir Directory to save fastq files.
 #'
-#' @param in_file Parquet filename, for file produced by ingest_read_pairs.
+#' @param in_dir Parquet file directory, created by ingest_read_pairs.
 #'
 #' @param clip Should reads be clipped. Don't use this if reads are intended for Tail Tools.
 #'
@@ -208,7 +257,7 @@ ingest_read_pairs <- function(
 #' @export
 demux_reads <- function(
         out_dir, 
-        in_file, 
+        in_dir, 
         sample_names=NULL,
         clip=FALSE,
         clip_min_untemplated=12,
@@ -216,13 +265,17 @@ demux_reads <- function(
         max_t_read_1=20,
         min_t=0,
         verbose=FALSE) {
-    assertthat::assert_that(file.exists(in_file), msg="Input file doesn't exist.")
+    
+    filenames <- list.files(in_dir, pattern="\\.parquet$", full.names=TRUE) |> sort()
+    assertthat::assert_that(length(filenames) > 0, msg="No parquet files found to demultiplex.")
     
     if (is.null(sample_names)) {
-        df <- arrow::open_dataset(in_file) |>
+        df <- purrr::map_dfr(filenames, \(filename) {
+            arrow::open_dataset(filename) |>
             dplyr::distinct(sample) |>
             dplyr::collect()
-        sample_names <- sort(na.omit(df$sample))
+        })
+        sample_names <- unique(sort(na.omit(df$sample)))
     }
     
     ensure_dir(out_dir)
@@ -238,7 +291,7 @@ demux_reads <- function(
         # Need to record which reads had tails for site calling
         if (clip) {
             yield <- local_write_parquet(file.path(out_dir,paste0(sample,".parquet")))
-            yield(dplyr::tibble(readname=character(0), has_end=logical(0), has_tail=logical(0), tail=numeric(0)))
+            yield(dplyr::tibble(readname=character(0), has_end=logical(0), tail=numeric(0)))
         }
         
         total_reads <- 0
@@ -246,50 +299,54 @@ demux_reads <- function(
         total_reads_ended <- 0
         #total_reads_tailed <- 0
         
-        scan_parquet(in_file, 
-            columns=c(
-                "readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual",
-                "poly_a_length", "poly_a_suffix", "poly_a_start", "read_1_clip",
-                "poly_t_length", "read_1_poly_t_length"), 
-            callback=\(df) {
-                df <- df |>
-                    dplyr::filter(
-                        sample == .env$sample,
-                        poly_t_length >= .env$min_t,
-                        read_1_poly_t_length <= .env$max_t_read_1) |>
-                    dplyr::mutate(
-                        readname = paste0(readname, "_", barcode,"_", umi),
-                        has_end  = poly_a_length+poly_a_suffix >= clip_min_untemplated,
-                        #has_tail = poly_a_length >= clip_min_untemplated,
-                        clip = ifelse(has_end, poly_a_start-1, read_1_clip),
-                        keep = clip >= clip_min_length)
-                
-                total_reads <<- total_reads + nrow(df)
-                total_reads_kept <<- total_reads_kept + sum(df$keep)
-                total_reads_ended <<- total_reads_ended + sum(df$keep & df$has_end)
-                #total_reads_tailed <<- total_reads_tailed + sum(df$keep & df$has_tail)
-                
-                if (clip) {
+        for(filename in filenames) {
+            scan_parquet(filename, 
+                columns=c(
+                    "readname", "sample", "barcode", "umi", "read_1_seq", "read_1_qual",
+                    "poly_a_length", "poly_a_suffix", "poly_a_start", "read_1_clip",
+                    "poly_t_length", "read_1_poly_t_length"), 
+                callback=\(df) {
                     df <- df |>
-                        dplyr::filter(keep) |>
+                        dplyr::filter(
+                            sample == .env$sample,
+                            poly_t_length >= .env$min_t,
+                            read_1_poly_t_length <= .env$max_t_read_1) |>
+                        dplyr::collect() |>
                         dplyr::mutate(
-                            read_1_seq = substr(read_1_seq, 1, clip),
-                            read_1_qual = substr(read_1_qual, 1, clip))
+                            readname = paste0(readname, "_", barcode,"_", umi),
+                            has_end  = poly_a_length+poly_a_suffix >= clip_min_untemplated,
+                            #has_tail = poly_a_length >= clip_min_untemplated,
+                            clip = ifelse(has_end, poly_a_start-1, read_1_clip),
+                            keep = clip >= clip_min_length)
                     
-                    yield(dplyr::select(df, readname, has_end, has_tail, tail=poly_a_length))
+                    total_reads <<- total_reads + nrow(df)
+                    total_reads_kept <<- total_reads_kept + sum(df$keep)
+                    total_reads_ended <<- total_reads_ended + sum(df$keep & df$has_end)
+                    #total_reads_tailed <<- total_reads_tailed + sum(df$keep & df$has_tail)
+                    
+                    if (clip) {
+                        df <- df |>
+                            dplyr::filter(keep) |>
+                            dplyr::mutate(
+                                read_1_seq = substr(read_1_seq, 1, clip),
+                                read_1_qual = substr(read_1_qual, 1, clip))
+                        
+                        yield(dplyr::select(df, readname, has_end, tail=poly_a_length))
+                    }
+                    
+                    if (nrow(df)) {
+                        # This code will write a single @ is df has now rows :-(
+                        # Hence the if.
+                        lines <- rbind(
+                            paste0("@",df$readname),
+                            df$read_1_seq,
+                            rep("+",nrow(df)),
+                            df$read_1_qual)
+                        writeLines(lines, con=con)
+                    }
                 }
-                
-                if (nrow(df)) {
-                    # This code will write a single @ is df has now rows :-(
-                    # Hence the if.
-                    lines <- rbind(
-                        paste0("@",df$readname),
-                        df$read_1_seq,
-                        rep("+",nrow(df)),
-                        df$read_1_qual)
-                    writeLines(lines, con=con)
-                }
-            })
+            )
+        }
         
         if (verbose) {
             message(sample, " done")
@@ -344,10 +401,17 @@ demux_reads <- function(
 
 #' Examine a random selection of reads
 #' @export
-reads_peek <- function(in_file, n=100, line_width=120, seed=563, out_file=NA) {
+reads_peek <- function(out_file, in_dir, n=100, line_width=120, seed=563) {
     withr::local_seed(seed)
     
-    pq <- arrow::ParquetFileReader$create(in_file, mmap=FALSE)
+    filenames <- list.files(in_dir, pattern="\\.parquet$", full.names=TRUE) |> sort()
+    
+    assertthat::assert_that(length(filenames) > 0, msg="No parquet files found to peek into.")
+    
+    row_group_counts <- purrr::map_dbl(filenames, \(filename) {
+        pq <- arrow::ParquetFileReader$create(filename, mmap=FALSE)
+        pq$num_row_groups
+    })
     
     if (!is.na(out_file)) {
         withr::local_output_sink(out_file)
@@ -372,6 +436,9 @@ This is a random selection of read pairs. For each read pair, the three lines ar
     # Samples without replacement.
     # Samples a row group, and then samples from the row group.
     for(nth in seq_len(n)) {
+        filename <- sample(filenames, 1, prob=row_group_counts)
+        pq <- arrow::ParquetFileReader$create(filename, mmap=FALSE)
+        
         df <- local({
             gr <- pq$ReadRowGroup( sample.int(pq$num_row_groups,1)-1 )
             dplyr::collect(gr[ sample.int(nrow(gr),1), ])
@@ -439,9 +506,9 @@ This is a random selection of read pairs. For each read pair, the three lines ar
 #' Generate an HTML report for a parquet file produced by \code{ingest_reads()}.
 #'
 #' @export
-reads_report <- function(in_file, out_file=paste0(in_file,".report.html")) {
+reads_report <- function(out_file, in_dir) {
     tmp <- withr::local_tempdir()
-    params <- list(in_file=in_file, wd=getwd())
+    params <- list(in_dir=in_dir, wd=getwd())
     out_dir <- dirname(out_file)
     
     rmarkdown::render(

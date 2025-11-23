@@ -4,7 +4,7 @@
 \alias{reads_report}
 \title{Reads report}
 \usage{
-reads_report(in_file, out_file = paste0(in_file, ".report.html"))
+reads_report(out_file, in_dir)
 }
 \description{
 Generate an HTML report for a parquet file produced by \code{ingest_reads()}.

@@ -56,7 +56,7 @@ scan_parquet <- function(filename, callback, columns=NULL, message="Processing")
     
     for(i in seq_len(reader$num_row_groups)-1L) {
         # Note: important not to store loaded data in a variable, so it can be garbage collected ASAP
-        callback(dplyr::collect(reader$ReadRowGroup(i, column_indices=column_indices)))
+        callback(reader$ReadRowGroup(i, column_indices=column_indices))
         cli::cli_progress_update(1)
     }
 }
@@ -92,12 +92,12 @@ scan_bam_chunks <- function(filename, param, callback, limit=NA, chunk=1e6) {
     withr::defer(close(f))
     
     while(total < limit) {
-        #TODO: Allow callback to garbage collect alignments
         alignments <- GenomicAlignments::readGAlignments(f, param=param)
+        n_this <- length(alignments)
         callback(alignments)
-        total <- total + length(alignments)
-        if (length(alignments) == 0) break
         rm(alignments)
+        total <- total + n_this
+        if (n_this == 0) break
     }
 }
 

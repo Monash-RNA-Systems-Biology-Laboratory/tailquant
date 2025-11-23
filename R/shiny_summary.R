@@ -10,7 +10,11 @@ summary_ui <- function(tq) {
     sites_gene <- sum(site_counts$n[ !is.na(site_counts$relation) ])
     
     shiny::div(
-        shiny::h2("Samples"),
+        shiny::fluidRow(
+            shiny::column(width=6,
+                shiny::h2("Samples")),
+            shiny::column(width=1, offset=5, style="text-align: right",
+                shiny::downloadButton("samples_download", "CSV"))),
         DT::datatable(
                 df,
                 rownames=FALSE,
@@ -33,4 +37,9 @@ summary_ui <- function(tq) {
 
 
 summary_server <- function(input, output, session, tq) {
+    output$samples_download <- shiny::downloadHandler(
+        filename="samples.csv",
+        content=\(filename) {
+            readr::write_csv(tq_sample_stats(tq), filename)
+        })
 }

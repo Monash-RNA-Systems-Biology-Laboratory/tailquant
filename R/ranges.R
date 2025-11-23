@@ -38,12 +38,17 @@ granges_to_sranges <- function(gr) {
 }
 
 # Any negative start positions are trimmed, to keep IGV happy.
-sranges_to_granges <- function(df) {
+sranges_to_granges <- function(df, sort=FALSE) {
     start <- df$start
     end <- df$end
     df$start <- ifelse(df$strand<0, -end, start) |> pmax(1)
     df$end <- ifelse(df$strand<0, -start, end)
     df$strand <- strand_to_char(df$strand)
+    
+    if (sort) {
+        df <- dplyr::arrange(df, seqnames, start)
+    }
+    
     GenomicRanges::GRanges(df)
 }
 
@@ -57,3 +62,9 @@ sranges_find_overlaps <- function(r1, r2) {
         dplyr::transmute(index1=queryHits, index2=subjectHits)
 }
 
+sranges_disjoin <- function(r) {
+    dplyr::select(r, seqnames, start, end, strand) |>
+        sranges_to_granges() |>
+        GenomicRanges::disjoin() |>
+        granges_to_sranges()
+}

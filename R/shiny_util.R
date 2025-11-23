@@ -11,7 +11,7 @@ plot_ui <- function(id, width=800, height=600, margin_controls=TRUE, ...) {
             if (margin_controls) shiny::numericInput(ns("margin_right"), "Right margin (0-1)", NA, min=0,max=1,step=0.1, width="10em") else shiny::div(),
             shiny::div(shiny::tags$label("Download"), shiny::tags$br(),
                 shiny::downloadButton(ns("pdf"), "PDF"),
-                #shiny::downloadButton(ns("eps"), "EPS"),
+                shiny::downloadButton(ns("eps"), "EPS"),
                 shiny::downloadButton(ns("svg"), "SVG"),
                 shiny::downloadButton(ns("png"), "PNG")
             )
@@ -47,15 +47,15 @@ plot_server <- function(id, callback, dlname="plot", dpi=96) { moduleServer(id, 
         }
     )
     
-    #output$eps <- shiny::downloadHandler(
-    #    paste0(dlname,".eps"),
-    #    function(filename) {
-    #        postscript(filename, width=input$width/dpi, height=input$height/dpi,
-    #                   paper="special", onefile=FALSE, horizontal=FALSE)
-    #        do_plot()
-    #        dev.off()
-    #    }
-    #)
+    output$eps <- shiny::downloadHandler(
+        paste0(dlname,".eps"),
+        function(filename) {
+            postscript(filename, width=input$width/dpi, height=input$height/dpi,
+                       paper="special", onefile=FALSE, horizontal=FALSE)
+            do_plot()
+            dev.off()
+        }
+    )
     
     output$svg <- shiny::downloadHandler(
         paste0(dlname,".svg"),

@@ -14,11 +14,13 @@ Improved quantification of poly(A) tail length from PAT-Seq data. Designed to be
 
 ## Installation
 
-Install:
+tailquant is an R package intended to be used with Linux. It may also work with other Unix operating systems such as Mac OS.
+
+First install:
 
 * R (version 4.4 or higher)
 * STAR (version 2.7.11b or higher)
-* seqtk (optional, version 1.3 or higher)
+* pigz
 
 Then within R install the `BiocManager` and `remotes` packages, and use `BiocManager` to install this Git repository:
 
@@ -89,7 +91,7 @@ future::plan(future::multicore, workers=6)
 # Step 1 loads all of the read pairs into a parquet file, 
 # and calls samples, quality clipping, poly(A), and poly(T) lengths.
 ingest_read_pairs(
-     out_prefix="reads"   # <- A file called reads.parquet will be created
+     out_prefix="reads"   # <- A directory called reads will be created
     ,reads1="reads1.fastq.gz"
     ,reads2="reads2.fastq.gz"
     ,clip_quality_char="I" # <- Check this is appropriate
@@ -101,7 +103,7 @@ ingest_read_pairs(
 # Step 2 produces demultiplexed fastq files from the parquet file, suitable for Tail Tools.
 demux_reads(
      out_dir="my_output_dir" 
-    ,in_file="reads.parquet"
+    ,in_dir="reads"
     ,max_t_read_1=20   # (default) Discard any reads with a run of Ts longer than this in read 1
     #,min_t=13         # Optionally discard any read pairs without poly(T) in read 2 
     )
@@ -125,7 +127,7 @@ ingest_tt(
      out_dir="my_output_dir"
     ,in_dir="my_tail_tools_pipeline_dir"
     ,tail_source="read2" # Where to get tail lengths from.
-    ,read_pairs_file="reads.parquet"
+    ,read_pairs_dir="reads"
     ,min_tail=13      # (default) Minimum "T"s to consider as having a poly(A) tail.
     ,length_trim=0     # poly(T) should be fine reaching to the end of read2.
     )

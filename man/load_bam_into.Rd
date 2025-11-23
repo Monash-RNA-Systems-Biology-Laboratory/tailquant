@@ -8,7 +8,7 @@ load_bam_into(
   dest_file,
   bam_file,
   tail_source,
-  read_pairs_file = NULL,
+  read_pairs_dir = NULL,
   clips_file = NULL,
   limit = NA,
   filter_secondary = TRUE

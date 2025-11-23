@@ -39,3 +39,41 @@ plot_ensure_margin <- function(p, left=NA, right=NA) {
     
     p
 }
+
+
+# Ensure a directory exists
+ensure_dir <- function(...) {
+    dir.create(file.path(...), recursive=TRUE, showWarnings=FALSE)
+}
+
+# Delete any cached files, as they may be out of date
+clean_up_files <- function(dir, pattern=NULL) {
+    files <- list.files(dir, pattern=pattern, full.names=TRUE)
+    for(filename in files) {
+        unlink(filename)
+    }
+}
+
+# Log messages, warnings, and errors to a file
+with_log <- function(filename, callback) {
+    log <- withr::local_connection(file(filename, open="w"))
+    
+    now <- \() strftime(Sys.time(), "%Y-%m-%d %H:%M ")
+    
+    withCallingHandlers(
+        callback(log),
+        message = \(x) {
+            # Only log messages with a newline, to exclude progress bars.
+            if (grepl("\n$", x$message)) {
+                cat(paste0(now(), x$message), file=log)
+            }
+        },
+        warning = \(x) {
+            cat(paste0(now(), "Warning: ", x$message, "\n"), file=log)
+        },
+        error = \(x) {
+            cat(paste0(now(), "Error: ", x$message, "\n"), file=log)
+        }
+    )
+}
+

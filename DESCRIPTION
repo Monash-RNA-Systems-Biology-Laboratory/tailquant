@@ -16,6 +16,7 @@ Imports:
     jsonlite,
     purrr,
     dplyr,
+    readr,
     tibble,
     stringr,
     stringdist,

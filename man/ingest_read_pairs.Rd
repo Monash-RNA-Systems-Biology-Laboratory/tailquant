@@ -15,13 +15,19 @@ ingest_read_pairs(
   poly_penalty = 1000,
   suffix_penalty = 4,
   limit = Inf,
-  subsample = 1,
-  seed = 563
+  chunk_size = 2e+07,
+  decompressor = "unpigz",
+  compressor = "pigz --fast"
 )
+}
+\arguments{
+\item{decompressor}{Decompression program to use (with any needed flags). Input will be piped to this program. Use \code{"cat"} if FASTQ files are not compressed.}
+
+\item{compressor}{Compression program to use after splitting. Input will be piped to this program.}
 }
 \description{
 Extract barcodes, UMIs, clipping information and poly(A)/poly(T) lengths, producing a large parquet file.
 }
 \details{
-For subsampling, the seqtk command-line tool must be installed.
+By default assumes FASTQ files are gzipped and uses unpigz to decompress and pigz to recompress. pigz must be installed for this to work.
 }

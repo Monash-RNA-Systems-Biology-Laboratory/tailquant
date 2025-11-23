@@ -140,6 +140,8 @@ site_reads_into <- function(dest_filename, reads_filename, sites, site_pad, site
     yield(template)
     
     scan_parquet(reads_filename, \(reads) {
+        reads <- dplyr::collect(reads)
+        
         # Associate reads with sites
         left <- ifelse(sites$strand < 0,  site_pad,      site_upstrand)
         right <- ifelse(sites$strand < 0, site_upstrand, site_pad)
@@ -152,7 +154,9 @@ site_reads_into <- function(dest_filename, reads_filename, sites, site_pad, site
         #This was unexpectedly slow:
         #hits <- dplyr::slice_min(hits, offset, n=1, by=index2, with_ties=FALSE)
         #So:
-        hits <- dplyr::summarize(hits, index1=index1[which.min(offset)], .by=c(index2))
+        if (nrow(hits) > 0) { # Avoid spurious dplyr warning
+            hits <- dplyr::summarize(hits, index1=index1[which.min(offset)], .by=c(index2))
+        }
         
         hits$close_to_site <- abs(reads$pos[hits$index2] - sites$pos[hits$index1]) <= site_pad
         

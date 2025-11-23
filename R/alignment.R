@@ -3,19 +3,19 @@
 # Functions to run STAR aligner, calculate depth of coverage
 #
 
-run_aligner <- function(out_dir, in_dir, star_dir, samples, threads=parallel::detectCores()) {
-    sample_filenames <- file.path(in_dir, paste0(samples,".fastq.gz"))
+run_aligner <- function(out_dir, in_dir, star_dir, sample_names, threads=parallel::detectCores()) {
+    sample_filenames <- file.path(in_dir, paste0(sample_names,".fastq.gz"))
     assertthat::assert_that(all(file.exists(sample_filenames)))
     assertthat::assert_that(dir.exists(star_dir))
     
     ensure_dir(out_dir)
     
-    for(i in seq_len(length(samples))) {
+    for(i in seq_len(length(sample_names))) {
         command <- paste0(
             "STAR",
             " --runThreadN ", threads,
             " --genomeDir ", shQuote(star_dir),
-            " --outFileNamePrefix ", shQuote(file.path(out_dir, paste0(samples[i],"."))),
+            " --outFileNamePrefix ", shQuote(file.path(out_dir, paste0(sample_names[i],"."))),
             " --outSAMtype BAM SortedByCoordinate",
             " --readFilesIn ", shQuote(sample_filenames[i]),
             " --readFilesCommand zcat",
@@ -24,15 +24,22 @@ run_aligner <- function(out_dir, in_dir, star_dir, samples, threads=parallel::de
             # No de-novo introns, annotated introns will still be used
             " --alignIntronMax 20")
         # By default multimappers will be output if there are less than 10 locations.
+        message("Running: ", command)
         
         code <- system(command)
         assertthat::assert_that(code == 0, msg="Running STAR failed")
+        
+        # STAR gives the BAM file a verbose name. Also, index it.
+        old_bam_filename <- file.path(out_dir, paste0(sample_names[i], ".Aligned.sortedByCoord.out.bam"))
+        new_bam_filename <- file.path(out_dir, paste0(sample_names[i], ".bam"))
+        file.rename(old_bam_filename, new_bam_filename)
+        Rsamtools::indexBam(new_bam_filename)
     }
 }
 
 
 #' @export
-make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename) {
+make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename, min_tail) {
     coverage_fwd <- NULL
     coverage_rev <- NULL
     coverage_fwd_end <- NULL
@@ -57,11 +64,17 @@ make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename) {
             GenomicAlignments::coverage(alignments[ GenomicAlignments::strand(alignments) == "-" ]))
         
         ranges <- methods::as(alignments, "GRanges") |> GenomicRanges::resize(1, fix="end")
-        ended_reads <- pq |> 
-            dplyr::filter(readname %in% ranges$qname, has_end==TRUE) |> 
-            dplyr::select(readname) |> 
+        #ended_reads <- pq |> 
+        #    dplyr::filter(readname %in% .env$ranges$qname, has_end==TRUE, tail >= .env$min_tail) |> 
+        #    dplyr::select(readname) |> 
+        #    dplyr::collect()
+        #ranges <- ranges[ ranges$qname %in% ended_reads$readname ]
+        ended_reads <- pq |>
+            dplyr::inner_join(dplyr::tibble(readname=ranges$qname, i=seq_len(length(ranges))), by="readname") |>
+            dplyr::filter(has_end==TRUE, tail >= .env$min_tail) |>
+            dplyr::select(i) |>
             dplyr::collect()
-        ranges <- ranges[ ranges$qname %in% ended_reads$readname ]
+        ranges <- ranges[ ended_reads$i ]
         coverage_fwd_end <<- combine(coverage_fwd_end, 
             GenomicRanges::coverage(ranges[ GenomicRanges::strand(ranges) == "+" ]))
         coverage_rev_end <<- combine(coverage_rev_end, 
@@ -95,41 +108,42 @@ total_bigwigs <- function(out_filename, in_filenames) {
 }
 
 #' @export
-make_bigwigs <- function(out_dir, in_dir_alignments, in_dir_parquets, samples) {
-    assertthat::assert_that(length(intersect(samples, c("total","multimapping"))) == 0)
+make_bigwigs <- function(out_dir, in_dir_alignments, in_dir_parquets, sample_names, min_tail) {
+    assertthat::assert_that(length(intersect(sample_names, c("total","multimapping"))) == 0)
     
     ensure_dir(out_dir)
     
-    parallel_walk(samples, \(sample) {
+    parallel_walk(sample_names, \(sample) {
         make_sample_bigwigs(
             file.path(out_dir, sample),
-            file.path(in_dir_alignments, paste0(sample, ".Aligned.sortedByCoord.out.bam")),
-            file.path(in_dir_parquets, paste0(sample, ".parquet")))
+            file.path(in_dir_alignments, paste0(sample, ".bam")),
+            file.path(in_dir_parquets, paste0(sample, ".parquet")),
+            min_tail=min_tail)
     })
     
     total_bigwigs(
         file.path(out_dir,"total.fwd.all.bigwig"),
-        file.path(out_dir,paste0(samples,".fwd.all.bigwig")))
+        file.path(out_dir,paste0(sample_names,".fwd.all.bigwig")))
     
     total_bigwigs(
         file.path(out_dir,"total.rev.all.bigwig"),
-        file.path(out_dir,paste0(samples,".rev.all.bigwig")))
+        file.path(out_dir,paste0(sample_names,".rev.all.bigwig")))
     
     total_bigwigs(
         file.path(out_dir,"total.fwd.unique.bigwig"),
-        file.path(out_dir,paste0(samples,".fwd.unique.bigwig")))
+        file.path(out_dir,paste0(sample_names,".fwd.unique.bigwig")))
     
     total_bigwigs(
         file.path(out_dir,"total.rev.unique.bigwig"),
-        file.path(out_dir,paste0(samples,".rev.unique.bigwig")))
+        file.path(out_dir,paste0(sample_names,".rev.unique.bigwig")))
     
     total_bigwigs(
         file.path(out_dir,"total.fwd.end.bigwig"),
-        file.path(out_dir,paste0(samples,".fwd.end.bigwig")))
+        file.path(out_dir,paste0(sample_names,".fwd.end.bigwig")))
     
     total_bigwigs(
         file.path(out_dir,"total.rev.end.bigwig"),
-        file.path(out_dir,paste0(samples,".rev.end.bigwig")))
+        file.path(out_dir,paste0(sample_names,".rev.end.bigwig")))
     
     all <- rtracklayer::import(file.path(out_dir,"total.fwd.all.bigwig"), "bigwig", as="RleList") +
            rtracklayer::import(file.path(out_dir,"total.rev.all.bigwig"), "bigwig", as="RleList")

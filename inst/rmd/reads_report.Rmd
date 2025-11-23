@@ -1,12 +1,12 @@
 ---
 params:
-    in_file: "input.parquet"
+    in_dir: "input"
     wd: "."
 output:
     html_document:
         code_folding: hide
         self_contained: true
-title: "`r basename(params$in_file)`"
+title: "`r basename(params$in_dir)`"
 ---
 
 The end of the genomic sequence in read 1 is considered identified if we see at least 12 total bases of poly(A) plus subsequent UMI and barcode.
@@ -17,7 +17,7 @@ knitr::opts_chunk$set(dpi=100, fig.width=6, fig.height=4)
 ```
 
 ```{r results="asis"}
-pq <- arrow::open_dataset(params$in_file)
+pq <- arrow::open_dataset(params$in_dir)
 
 n <- nrow(pq)
 

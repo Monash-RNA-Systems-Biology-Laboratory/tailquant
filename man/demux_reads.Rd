@@ -6,7 +6,7 @@
 \usage{
 demux_reads(
   out_dir,
-  in_file,
+  in_dir,
   sample_names = NULL,
   clip = FALSE,
   clip_min_untemplated = 12,
@@ -19,7 +19,7 @@ demux_reads(
 \arguments{
 \item{out_dir}{Directory to save fastq files.}
 
-\item{in_file}{Parquet filename, for file produced by ingest_read_pairs.}
+\item{in_dir}{Parquet file directory, created by ingest_read_pairs.}
 
 \item{clip}{Should reads be clipped. Don't use this if reads are intended for Tail Tools.}
 
