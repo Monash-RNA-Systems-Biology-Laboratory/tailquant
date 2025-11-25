@@ -11,7 +11,8 @@ load_bam_into(
   read_pairs_dir = NULL,
   clips_file = NULL,
   limit = NA,
-  filter_secondary = TRUE
+  keep_secondary = FALSE,
+  keep_multimappers = TRUE
 )
 }
 \description{

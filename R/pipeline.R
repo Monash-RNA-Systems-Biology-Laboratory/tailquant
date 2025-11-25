@@ -30,7 +30,8 @@ run_tq <- function(
         site_min_reads=50,
         tail_excess_required=5,
         a_prop=0.6,
-        steps=1:12) {
+        keep_multimappers=TRUE,
+        steps=1:11) {
     
     args <- as.list(environment())
     ensure_dir(out_dir)
@@ -74,7 +75,8 @@ run_tq <- function(
                 in_dir_alignments=file.path(out_dir, "bam"),
                 in_dir_parquets=file.path(out_dir, "demux"),
                 sample_names=sample_names,
-                min_tail=min_tail)
+                min_tail=min_tail,
+                keep_multimappers=keep_multimappers) # Only affects "ends" bigwig
         }
         
         if (4 %in% steps) {
@@ -87,7 +89,8 @@ run_tq <- function(
                     bam_file,
                     tail_source=tail_source, 
                     read_pairs_dir=in_dir,
-                    filter_secondary=TRUE) # Working with raw STAR output, so need to filter these
+                    keep_secondary=FALSE, # Working with raw STAR output, so need to filter these
+                    keep_multimappers=keep_multimappers)
                 NULL
             })
         }
@@ -214,14 +217,6 @@ run_tq <- function(
                     count_umis() |>
                     arrow::write_parquet(file.path(out_dir,"counts",paste0(sample,".counts.parquet")))
             })
-        }
-        
-        if (12 %in% steps) {
-            message("Step 12: stats")
-            tq <- load_tq(out_dir)
-            calc_site_stats(tq) |>
-                arrow::write_parquet(file.path(out_dir,"sites.parquet"))
-            rm(tq)
         }
         
         # Delete any cached files, as they may be out of date

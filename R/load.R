@@ -128,14 +128,14 @@ load_read1_clips <- function(read_names, read_pairs_dir) {
 load_bam_into <- function(
         dest_file, bam_file, 
         tail_source, read_pairs_dir=NULL, clips_file=NULL,
-        limit=NA, filter_secondary=TRUE) {
+        limit=NA, keep_secondary=FALSE, keep_multimappers=TRUE) {
     
     assertthat::assert_that(file.exists(bam_file))
     
     param <- Rsamtools::ScanBamParam(
         what=c("qname"), 
         tag=c("NH"),
-        flag=Rsamtools::scanBamFlag(isSecondaryAlignment=ifelse(filter_secondary,FALSE,NA)))
+        flag=Rsamtools::scanBamFlag(isSecondaryAlignment=ifelse(keep_secondary,NA,FALSE)))
     
     # - If tails from Tail Tools, load them all ahead of time
     # - Some older Tail Tools runs will not have UMIs, in which case umi column won't be present in output
@@ -178,6 +178,10 @@ load_bam_into <- function(
                     strand=strand_to_int(strand),
                     num_hits=NH)
             
+            if (!keep_multimappers) {
+                alignments <- dplyr::filter(alignments, num_hits == 1)
+            }
+            
             if (tail_source == "tt") {
                 clips <- tt_clips
             } else if (tail_source == "read2") {
@@ -217,8 +221,9 @@ ingest_tt <- function(
         site_upstrand=300,
         min_tail=13,
         length_trim=10,
+        keep_multimappers=TRUE,
         limit=NA, # Max alignments to read per BAM file
-        steps=1:7) {
+        steps=1:6) {
     
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
     
@@ -261,7 +266,8 @@ ingest_tt <- function(
                 read_pairs_dir=read_pairs_dir,
                 clips_file=clips_file,
                 limit=limit, 
-                filter_secondary=FALSE) # Tail Tools has already filtered to one alignment per read
+                keep_secondary=TRUE, # Tail Tools has already filtered to one alignment per read
+                keep_multimappers=keep_multimappers)
             NULL
         })
     }
@@ -297,14 +303,6 @@ ingest_tt <- function(
                 count_umis() |>
                 arrow::write_parquet(file.path(out_dir,"counts",paste0(sample,".counts.parquet")))
         })
-    }
-    
-    if (7 %in% steps) {
-        message("Step 7: stats")
-        tq <- load_tq(out_dir)
-        calc_site_stats(tq) |>
-            arrow::write_parquet(file.path(out_dir,"sites.parquet"))
-        rm(tq)
     }
     
     # Delete any cached files, as they may be out of date

@@ -45,56 +45,67 @@ site_ui <- function(tq, max_tail=NA) {
         max_tail <- max_tail_upper
     }
     
-    options_panel <- bslib::nav_panel("Options",
+    options_panel <- bslib::nav_panel("Configure",
         shiny::p(),
-        shiny::div(
-            style="width: 50%",
-            #shiny::numericInput("top_n", "List this many top sites by n_tail_ended (0=all)", value=0, min=0, step=1),
-            shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
-            shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail, min=1, max=max_tail_upper, step=1),
-            shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
-            shiny::checkboxInput("cpm", "Plots show expression level.", value=TRUE),
-            shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
-            shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length.")))
-    
-    samples_panel <- bslib::nav_panel("Sample selection",
-        shiny::p(),
-        shiny::checkboxGroupInput("which_samples", "Samples to show", 
-            choices=tq@samples$sample,
-            selected=tq@samples$sample),
-        shiny::p("Note: This sample selection does not affect aggregated tail length statistics, just plots showing individual samples."))
-    
-    table_panel <- bslib::nav_panel("Site selection",
         shiny::fluidRow(
             shiny::column(width=6,
-                shiny::textInput("search", label="", value="", placeholder="Search, see explanation, examples: top=1000 name=^PAP")),
+                shiny::textInput("sample_select", "Sample selection (regular expression)", value=".*", width="50%"),
+                shiny::textInput("sample_select_stats", "Sample selection for table stats (regular expression)", value="", width="50%"),
+                shiny::tableOutput("sample_table")),
+            shiny::column(width=6,
+                #shiny::numericInput("top_n", "List this many top sites by n_tail_ended (0=all)", value=0, min=0, step=1),
+                shiny::numericInput("heatmap_rows", "Show this many sites in heatmap", value=50, min=1, max=2000, step=1),
+                shiny::numericInput("max_tail", "Maximum tail length in plots", value=max_tail, min=1, max=max_tail_upper, step=1),
+                shiny::numericInput("step", "Density plot bin size", value=1, min=1, step=1),
+                shiny::checkboxInput("cpm", "Plots show expression level.", value=TRUE),
+                shiny::checkboxInput("show_samples", "Show individual samples in plots.", value=TRUE),
+                shiny::checkboxInput("assume_all_died", "Use old method, treating tail-to-end-of-read as actual tail length."))),
+        shiny::markdown("
+        **Notes:**
+        
+        **Sample selection:**
+        
+        Sample selection is by regular expression.
+        
+        Note that the first time a new set of sites is selected for table stats, there will be a computation that might take a few minutes.
+        
+        Example:
+        
+        * To match both wildtype and mutantB samples, use `wildtype|mutantB`.
+        
+        **Searching in the sites table:**
+        
+        `top=NNN` for the top NNN genes by n_tail_ended.
+        
+        `column_name=regex` to search particular columns.
+        
+        Otherwise, a full-text search is performed for search words.
+        
+        **Sites table columns:**
+        
+        n_reads = Number of reads.
+        
+        n_tail_reads = Number of reads ending near the actual site rather than upstrand, and with a poly(A) tail.
+        
+        n = Number of UMIs.
+        
+        n_tail = Number of UMIs with a poly(A) tail.
+        
+        n_tail_ended = Number of UMIs with a poly(A) tail that ended before the end of the read.
+        
+        tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length.
+        
+        Best to limit the list to some number of top sites by n_tail_ended before sorting by these columns.
+        
+        cpm = Counts Per Million, calculated from n."))
+    
+    table_panel <- bslib::nav_panel("Sites table",
+        shiny::fluidRow(
+            shiny::column(width=6,
+                shiny::textInput("search", label="", value="", placeholder="Search, examples: top=1000 name=^PAP", width="100%")),
             shiny::column(width=1, offset=5, style="text-align: right",
                 shiny::downloadButton("table_download", "CSV"))),
-        DT::DTOutput("table", fill=FALSE))
-    
-    explanation_panel <- bslib::nav_panel("Explanation",
-        shiny::p(),
-        shiny::p("Searching:"),
-        shiny::p(shiny::strong("top=NNN"), " for the top NNN genes by n_tail_ended."),
-        shiny::p(shiny::strong("column_name=regex "), " to search particular columns."),
-        shiny::p(),
-        shiny::p("n_reads = Number of reads."),
-        shiny::p("n_tail_reads = Number of reads ending near the actual site rather than upstrand, and with a poly(A) tail."),
-        shiny::p("n = Number of UMIs."),
-        shiny::p("n_tail = Number of UMIs with a poly(A) tail."),
-        shiny::p("n_tail_ended = Number of UMIs with a poly(A) tail that ended before the end of the read."),
-        shiny::p("tail90, tail50, tail10 = 90%/50%/10% of tails are longer than this. tail50 is the median tail length."),
-        #shiny::p("tightness = tail90/tail10. Sort by this column to see sites with tight or wide tail length distributions. Best to limit the list to some number of top sites by n_tail_ended first."),
-        shiny::p("cpm = Counts Per Million, calculated from n."))
-    
-    ui <- shiny::tagList(
-        shiny::wellPanel(
-            bslib::navset_underline(
-                table_panel,
-                options_panel,
-                samples_panel,
-                explanation_panel)),
-        shiny::p(),
+        DT::DTOutput("table", fill=FALSE),
         shiny::uiOutput("site_info"),
         bslib::navset_underline(
             header=shiny::p(),
@@ -105,15 +116,19 @@ site_ui <- function(tq, max_tail=NA) {
             bslib::nav_panel("Site ridgeline", plot_ui("ridgeline_plot", width=1000, height=600)),
             bslib::nav_panel("Site heatmap", plot_ui("density_heatmap", width=1000, height=600)),
             bslib::nav_panel("Site read details", plot_ui("detail_plot", width=1000, height=800)),
-            bslib::nav_panel("Multi-site heatmap", plot_ui("heatmap", width=1000, height=800))),
-        
+            bslib::nav_panel("Multi-site heatmap", plot_ui("heatmap", width=1000, height=800))))
+    
+    ui <- shiny::tagList(
+        bslib::navset_underline(
+            options_panel,
+            table_panel),
         shiny::div(style="height: 800px;"))
     
     ui
 }
 
 site_server <- function(input, output, session, tq) { #, get_sites_wanted=function() NULL) {
-    sites <- tq@sites
+    #sites <- tq@sites
     samples <- tq@samples
     
     min_tail <- tq_tail_range(tq)[1]
@@ -124,15 +139,44 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     
     search <- debounce(reactive(input$search), 100)
     
+    sample_names <- shiny::reactive({
+        samples <- tq@samples$sample
+        if (input$sample_select != "") {
+            keep <- stringr::str_detect(samples, stringr::regex(input$sample_select, ignore_case=TRUE))
+            samples <- samples[keep]
+        }
+        samples
+    })
+    
+    sample_names_stats <- shiny::reactive({
+        samples <- tq@samples$sample
+        if (input$sample_select_stats != "") {
+            keep <- stringr::str_detect(samples, stringr::regex(input$sample_select_stats, ignore_case=TRUE))
+            samples <- samples[keep]
+        } else {
+            samples <- sample_names()
+        }
+        samples
+    })
+    
+    output$sample_table <- shiny::renderTable({
+        dplyr::tibble(
+            `Sample` = tq@samples$sample,
+            `Show` = ifelse(Sample %in% sample_names(), "✓", ""),
+            `Use for stats` = ifelse(Sample %in% sample_names_stats(), "✓", "")) |>
+            dplyr::filter(`Show`!="" | `Use for stats`!="")
+    })
+    
+    
+    sites <- reactive(withProgress(message="Computing", value=NA, {
+        tq@sites |>
+            dplyr::select(site, name, location, relation, biotype, gene_id, product) |>
+            dplyr::collect() |>
+            dplyr::left_join(tq_site_stats(tq, sample_names_stats()), by="site")
+    }))
+    
     df <- shiny::reactive({
-        result <- sites
-        # Backwards compatability
-        if (!"all_n_read" %in% names(result))
-            result <- dplyr::mutate(result, all_n_read=NA)
-        if (!"all_n_read_multimapper" %in% names(result))
-            result <- dplyr::mutate(result, all_n_read_multimapper=NA)
-        if (!"all_n" %in% names(result))
-            result <- dplyr::mutate(result, all_n=NA)
+        result <- sites()
         
         result <- result |>
             dplyr::transmute(
@@ -143,25 +187,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
                 relation, biotype, gene_id, product) |>
             dplyr::arrange(-tail_n_ended)
         
-        #want <- get_sites_wanted()
-        #if (length(want) > 0) {
-        #    result <- dplyr::filter(result, site %in% want)
-        #} else if (input$top_n > 0) {
-        #    result <- dplyr::slice_head(result, n=input$top_n)
-        #}
-        
-        result <- dplyr::collect(result)
-        
-        #if (length(want) > 0) {
-        #    rows <- match(result$site, want) |> na.omit()
-        #    result <- result[rows,]
-        #}
-        
         result <- site_table_search(result, search())
-        
-        #if (input$top_n > 0) {
-        #    result <- dplyr::slice_head(result, n=input$top_n)
-        #}
         
         result
     })
@@ -175,16 +201,16 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
             input$table_rows_selected %in% input$table_rows_current)
             row <- input$table_rows_selected
         site <- df()$site[row]
-        result <- sites |>
+        result <- sites() |>
             dplyr::filter(site == .env$site) |>
             dplyr::collect()
         
         req(nrow(result) == 1)
         result
-    }) |> debounce(10, priority=-1) #Delay a bit to let table go first
+    })
     
     selected_samples <- reactive({
-        result <- dplyr::filter(samples, sample %in% .env$input$which_samples)
+        result <- dplyr::filter(samples, sample %in% sample_names())
         
         if (!"color" %in% colnames(result)) {
             result$color <- scales::hue_pal()(nrow(result))
@@ -323,17 +349,21 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     plot_server("heatmap", \() { 
         req(input$table_rows_all)
         sites_wanted <- df()$site[ head(input$table_rows_all, input$heatmap_rows) ]
-        this_sites <- sites |>
-            dplyr::filter(site %in% .env$sites_wanted) |> 
-            dplyr::collect()
+        this_sites <- sites() |>
+            dplyr::filter(site %in% .env$sites_wanted)
         this_sites <- this_sites[match(sites_wanted, this_sites$site),]
         this_sites <- this_sites[!purrr::map_lgl(this_sites$tail_counts,is.null),]
         req(nrow(this_sites) > 0)
         
         kms <- purrr::map(this_sites$tail_counts, calc_km, assume_all_died=input$assume_all_died)
-        names <- paste(tidyr::replace_na(this_sites$name,""), this_sites$site)
         
-        p <- plot_km_density_heatmap(kms, names,
+        # Fix up Tail Tools peak names
+        sites <- this_sites$site
+        old_name <- grepl("^peak[0-9]*$", sites)
+        names <- tidyr::replace_na(this_sites$name,"")
+        sites[old_name] <- paste(names[old_name], sites[old_name])
+        
+        p <- plot_km_density_heatmap(kms, sites,
             min_tail=min_tail,
             max_tail=input$max_tail,
             step=input$step)

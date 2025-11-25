@@ -9,6 +9,7 @@ LinkingTo:
     Rcpp
 Imports:
     methods,
+    rlang,
     withr,
     future,
     parallel,

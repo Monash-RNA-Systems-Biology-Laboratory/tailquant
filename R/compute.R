@@ -264,3 +264,62 @@ counts_genesums <- function(counts, tq) {
     good <- !is.na(groups)
     rowsum(counts[good,,drop=FALSE], groups[good])
 }
+
+
+#' General statistics for a group of sites
+#'
+#' (Used in site table of shiny app.)
+#'
+#' @export
+tq_site_stats <- function(tq, samples=NULL) {
+    if (is.null(samples)) 
+        samples <- tq@samples$sample
+    
+    samples <- sort(samples)
+    key <- rlang::hash(samples)
+    name <- paste0("site_stats_",key,".qs2")
+    
+    tq_get_cache(tq, name=name, version=samples, \() {
+        keep <- tq@samples$sample %in% samples
+        tail_counts <- combine_tail_counts(tq@samples$tail_counts[keep])
+        
+        result <- tail_counts |>
+            tidyr::nest(.by=site, .key="tail_counts") |>
+            dplyr::mutate(
+                km=purrr::map(tail_counts, calc_km, .progress=TRUE),
+                tail_n_read=purrr::map_dbl(tail_counts, \(df) sum(df$n_read_event)),
+                tail_n=purrr::map_dbl(tail_counts, \(df) sum(df$n_event)),
+                tail_n_died=purrr::map_dbl(tail_counts, \(df) sum(df$n_died)),
+                tail10=purrr::map_dbl(km, km_quantile, 0.1),
+                tail25=purrr::map_dbl(km, km_quantile, 0.25),
+                tail50=purrr::map_dbl(km, km_quantile, 0.5),
+                tail75=purrr::map_dbl(km, km_quantile, 0.75),
+                tail90=purrr::map_dbl(km, km_quantile, 0.9))
+        
+        # These are big, but are used in the multi-site heatmap.
+        #result$tail_counts <- NULL
+        
+        # These are easily recreated
+        result$km <- NULL
+        
+        counts <- combine_counts(tq@samples$counts[keep]) |>
+            dplyr::select(site,all_n=n,all_n_read=n_read,all_n_read_multimapper=n_read_multimapper)
+        
+        result <- dplyr::full_join(result, counts, by="site")
+        
+        # Ensure complete
+        result <- tq@sites |> 
+            dplyr::select(site) |>
+            dplyr::collect() |>
+            dplyr::full_join(result, by="site") |>
+            dplyr::mutate(
+                all_n=tidyr::replace_na(all_n,0),
+                all_n_read=tidyr::replace_na(all_n_read,0),
+                all_n_read_multimapper=tidyr::replace_na(all_n_read_multimapper,0),
+                tail_n=tidyr::replace_na(tail_n,0), 
+                tail_n_read=tidyr::replace_na(tail_n_read,0), 
+                tail_n_died=tidyr::replace_na(tail_n_died,0))
+        
+        result
+    })
+}

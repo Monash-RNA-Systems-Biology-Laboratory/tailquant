@@ -39,7 +39,8 @@ run_aligner <- function(out_dir, in_dir, star_dir, sample_names, threads=paralle
 
 
 #' @export
-make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename, min_tail) {
+# Note: keep_multimappers only affects "end" bigwigs!
+make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename, min_tail, keep_multimappers=TRUE) {
     coverage_fwd <- NULL
     coverage_rev <- NULL
     coverage_fwd_end <- NULL
@@ -64,11 +65,11 @@ make_sample_bigwigs <- function(out_prefix, bam_filename, parquet_filename, min_
             GenomicAlignments::coverage(alignments[ GenomicAlignments::strand(alignments) == "-" ]))
         
         ranges <- methods::as(alignments, "GRanges") |> GenomicRanges::resize(1, fix="end")
-        #ended_reads <- pq |> 
-        #    dplyr::filter(readname %in% .env$ranges$qname, has_end==TRUE, tail >= .env$min_tail) |> 
-        #    dplyr::select(readname) |> 
-        #    dplyr::collect()
-        #ranges <- ranges[ ranges$qname %in% ended_reads$readname ]
+        
+        if (!keep_multimappers) {
+            ranges <- ranges[ S4Vectors::mcols(ranges)$NH == 1 ]
+        }
+        
         ended_reads <- pq |>
             dplyr::inner_join(dplyr::tibble(readname=ranges$qname, i=seq_len(length(ranges))), by="readname") |>
             dplyr::filter(has_end==TRUE, tail >= .env$min_tail) |>
@@ -108,7 +109,8 @@ total_bigwigs <- function(out_filename, in_filenames) {
 }
 
 #' @export
-make_bigwigs <- function(out_dir, in_dir_alignments, in_dir_parquets, sample_names, min_tail) {
+# Note: keep_multimappers only affects "end" bigwigs!
+make_bigwigs <- function(out_dir, in_dir_alignments, in_dir_parquets, sample_names, min_tail, keep_multimappers=TRUE) {
     assertthat::assert_that(length(intersect(sample_names, c("total","multimapping"))) == 0)
     
     ensure_dir(out_dir)
@@ -118,7 +120,7 @@ make_bigwigs <- function(out_dir, in_dir_alignments, in_dir_parquets, sample_nam
             file.path(out_dir, sample),
             file.path(in_dir_alignments, paste0(sample, ".bam")),
             file.path(in_dir_parquets, paste0(sample, ".parquet")),
-            min_tail=min_tail)
+            min_tail=min_tail, keep_multimappers=keep_multimappers)
     })
     
     total_bigwigs(

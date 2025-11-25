@@ -11,12 +11,15 @@ explore_ui <- function(tq) {
     
     configure <- shiny::tagList(
         shiny::p(),
-        shiny::checkboxInput("explore_genes", "Aggregate to genes", value=FALSE),
-        shiny::numericInput("explore_tail_min", "Use reads with tail length at least", value=NA, min=13, step=1),
-        shiny::numericInput("explore_const", "Moderation log2(CPM+nnn)", value=1, min=0, step=0.5),
-        shiny::textInput("explore_select", "Sample selection (regular expression)", value=""),
-        shiny::textInput("explore_group", "Sample grouping (regular expression)", value="(.*)"),
-        shiny::tableOutput("explore_grouping"),
+        shiny::fluidRow(
+            shiny::column(width=6,
+                shiny::textInput("explore_select", "Sample selection (regular expression)", value="", width="50%"),
+                shiny::textInput("explore_group", "Sample grouping (regular expression)", value="(.*)", width="50%"),
+                shiny::tableOutput("explore_grouping")),
+            shiny::column(width=6,
+                shiny::checkboxInput("explore_genes", "Aggregate to genes", value=FALSE),
+                shiny::numericInput("explore_tail_min", "Use reads with tail length at least", value=NA, min=13, step=1),
+                shiny::numericInput("explore_const", "Moderation log2(CPM+nnn)", value=1, min=0, step=0.5))),
         shiny::markdown("
         **Notes:**
         

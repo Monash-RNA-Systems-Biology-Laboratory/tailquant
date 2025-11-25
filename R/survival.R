@@ -294,48 +294,6 @@ combine_counts <- function(counts_list) {
             .by=site)
 }
 
-#' @export
-calc_site_stats <- function(tq) {
-    sites <- tq@sites
-    
-    tail_counts <- combine_tail_counts(tq@samples$tail_counts)
-    
-    result <- tail_counts |>
-        tidyr::nest(.by=site, .key="tail_counts") |>
-        dplyr::mutate(
-            km=purrr::map(tail_counts, calc_km, .progress=TRUE),
-            tail_n_read=purrr::map_dbl(tail_counts, \(df) sum(df$n_read_event)),
-            tail_n=purrr::map_dbl(tail_counts, \(df) sum(df$n_event)),
-            tail_n_died=purrr::map_dbl(tail_counts, \(df) sum(df$n_died)),
-            tail10=purrr::map_dbl(km, km_quantile, 0.1),
-            tail25=purrr::map_dbl(km, km_quantile, 0.25),
-            tail50=purrr::map_dbl(km, km_quantile, 0.5),
-            tail75=purrr::map_dbl(km, km_quantile, 0.75),
-            tail90=purrr::map_dbl(km, km_quantile, 0.9))
-    
-    counts <- combine_counts(tq@samples$counts) |>
-        dplyr::select(site,all_n=n,all_n_read=n_read,all_n_read_multimapper=n_read_multimapper)
-    
-    result <- dplyr::full_join(result, counts, by="site")
-    
-    if (!is.null(sites)) {
-        # Delete any existing results
-        sites <- dplyr::collect(sites)
-        sites <- sites[ c("site",setdiff(colnames(sites),colnames(result))) ]
-        result <- sites |>
-            dplyr::full_join(result, by="site") |>
-            dplyr::mutate(
-                all_n=tidyr::replace_na(all_n,0),
-                all_n_read=tidyr::replace_na(all_n_read,0),
-                all_n_read_multimapper=tidyr::replace_na(all_n_read_multimapper,0),
-                tail_n=tidyr::replace_na(tail_n,0), 
-                tail_n_read=tidyr::replace_na(tail_n_read,0), 
-                tail_n_died=tidyr::replace_na(tail_n_died,0))
-    }
-    
-    result
-}
-
 
 #' @export
 stats_density_mat <- function(stats, min_tail=0, max_tail=NULL, what="prop_died") {

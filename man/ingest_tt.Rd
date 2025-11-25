@@ -14,8 +14,9 @@ ingest_tt(
   site_upstrand = 300,
   min_tail = 13,
   length_trim = 10,
+  keep_multimappers = TRUE,
   limit = NA,
-  steps = 1:7
+  steps = 1:6
 )
 }
 \arguments{
