@@ -16,7 +16,7 @@ ingest_tt(
   length_trim = 10,
   keep_multimappers = TRUE,
   limit = NA,
-  steps = 1:6
+  steps = 1:7
 )
 }
 \arguments{

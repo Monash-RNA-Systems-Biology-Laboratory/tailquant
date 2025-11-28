@@ -29,9 +29,10 @@ Load with `load_tq(directory)` to obtain a TailQuant object.
 * gene_id = Unique identifier for gene (eg ENSEMBL ID).
 * name = Name/symbol for the gene.
 * biotype = biotype of the gene.
+* has_cds = Do any transcripts for this gene have a coding sequence?
 * product = Text description of the function of the gene, protein it produces, etc.
-* tail_counts = List of data frames, giving total read and UMI counts vs tail length.
-* various statistics
+* pos_vs_transcript_end = Location of site relative to most downstrand relevant transcript.
+* pos_vs_cds_end = Location of site relative to end of most downstrand relevant CDS.
 
 ### @samples
 

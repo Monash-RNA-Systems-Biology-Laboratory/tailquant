@@ -103,7 +103,12 @@ test_server <- function(input, output, session, tq, tests) {
     })
     
     output$test_table_header <- shiny::renderUI({
-        shiny::h3(results()$title)
+        shiny::fluidRow(
+            shiny::column(width=11,
+                shiny::h3(results()$title)),
+            shiny::column(width=1, style="text-align: right",
+                shiny::downloadButton("test_table_download", "CSV")))
+        
     })
     
     output$test_table <- DT::renderDT(server=TRUE, {
@@ -118,7 +123,7 @@ test_server <- function(input, output, session, tq, tests) {
         
         digits <- max(0, -floor(log10(results()$step)))
         
-        priority <- c("rank","name","confect","effect","se","fdr_zero","row_mean",contrasts)
+        priority <- c("rank","name","gene_name","confect","effect","se","fdr_zero","row_mean",contrasts)
         reordering <- order(match(colnames(df_show), priority))
         df_show <- df_show[,reordering,drop=FALSE]
         
@@ -135,6 +140,12 @@ test_server <- function(input, output, session, tq, tests) {
             DT::formatRound(round_cols, digits=digits) |>
             DT::formatSignif(signif_cols, digits=3)
     })
+    
+    output$test_table_download <- shiny::downloadHandler(
+        filename="test.csv",
+        content=\(filename) {
+            readr::write_csv(results()$table, filename)
+        })
     
     output$test_diagnostics <- shiny::renderUI({
         spec <- attr(results(), "version")

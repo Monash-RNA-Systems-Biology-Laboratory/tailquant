@@ -25,7 +25,7 @@ run_tq(
   tail_excess_required = 5,
   a_prop = 0.6,
   keep_multimappers = TRUE,
-  steps = 1:11
+  steps = 1:12
 )
 }
 \arguments{

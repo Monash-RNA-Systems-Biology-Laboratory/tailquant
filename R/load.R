@@ -223,90 +223,103 @@ ingest_tt <- function(
         length_trim=10,
         keep_multimappers=TRUE,
         limit=NA, # Max alignments to read per BAM file
-        steps=1:6) {
+        steps=1:7) {
     
+    args <- as.list(environment())
     assertthat::assert_that(dir.exists(in_dir), msg="Input directory doesn't exist.")
-    
     ensure_dir(out_dir)
-    
-    # We can use more tail lengths if getting them from read 2
-    must_be_close_to_site <- tail_source != "read2"
-    
-    if (1 %in% steps) {
-        message("Step 1: samples")
-        meta <- jsonlite::fromJSON(file.path(in_dir, "plotter-config.json"))
-        sample_names <- meta$samples$name
+    with_log(file.path(out_dir,"log.txt"), \(log) {
+        cat(file=log, paste0(
+            "Ingesting from Tail Tools\n\n",
+            "Working directory\n\n", getwd(),"\n\n",
+            "Arguments\n\n"))
+        for(name in names(args)) {
+            cat(file=log, paste0(name, "=", paste(deparse(args[[name]]), collapse="\n    "), "\n"))
+        }
+        cat(file=log, "\n")
         
-        dplyr::tibble(sample=sample_names) |>
-            arrow::write_parquet(file.path(out_dir,"samples.parquet"))
-    }
-    
-    sample_names <- arrow::open_dataset(file.path(out_dir,"samples.parquet")) |> 
-        dplyr::collect() |> 
-        dplyr::pull(sample)
-    
-    if (2 %in% steps) {
-        message("Step 2: sites")
-        if (is.null(site_file)) 
-            site_file <- in_dir
-        load_tt_sites(site_file) |>
-            arrow::write_parquet(file.path(out_dir,"sites.parquet"))
-    }
-    
-    if (3 %in% steps) {
-        message("Step 3: reads")
-        ensure_dir(out_dir, "reads")
-        parallel_walk(sample_names, \(sample) {
-            bam_file <- file.path(in_dir,"samples",sample,"alignments_filtered_sorted.bam")
-            clips_file <- file.path(in_dir,"samples",sample,"clipped_reads.clips.gz")
-            load_bam_into(
-                file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
-                bam_file,
-                tail_source=tail_source, 
-                read_pairs_dir=read_pairs_dir,
-                clips_file=clips_file,
-                limit=limit, 
-                keep_secondary=TRUE, # Tail Tools has already filtered to one alignment per read
-                keep_multimappers=keep_multimappers)
-            NULL
-        })
-    }
-    
-    if (4 %in% steps) {
-        message("Step 4: sited_reads")
-        ensure_dir(out_dir, "sited_reads")
-        parallel_walk(sample_names, \(sample) {
-            sites <- load_parquet(out_dir,".","sites.parquet")
-            site_reads_into(
-                file.path(out_dir,"sited_reads",paste0(sample,".sited_reads.parquet")),
-                file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
-                sites, site_pad=site_pad, site_upstrand=site_upstrand)
-            NULL
-        })
-    }
-    
-    if (5 %in% steps) {
-        message("Step 5: tail_counts")
-        ensure_dir(out_dir,"tail_counts")
-        parallel_walk(sample_names, \(sample) {
-            load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
-                count_tails(min_tail=min_tail, length_trim=length_trim, must_be_close_to_site=must_be_close_to_site) |>
-                arrow::write_parquet(file.path(out_dir,"tail_counts",paste0(sample,".tail_counts.parquet")))
-        })
-    }
-    
-    if (6 %in% steps) {
-        message("Step 6: counts")
-        ensure_dir(out_dir,"counts")
-        parallel_walk(sample_names, \(sample) {
-            load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
-                count_umis() |>
-                arrow::write_parquet(file.path(out_dir,"counts",paste0(sample,".counts.parquet")))
-        })
-    }
-    
-    # Delete any cached files, as they may be out of date
-    clean_up_files(file.path(out_dir, "cache"), "\\.qs2$")
+        # We can use more tail lengths if getting them from read 2
+        must_be_close_to_site <- tail_source != "read2"
+        
+        if (1 %in% steps) {
+            message("Step 1: samples")
+            meta <- jsonlite::fromJSON(file.path(in_dir, "plotter-config.json"))
+            sample_names <- meta$samples$name
+            
+            dplyr::tibble(sample=sample_names) |>
+                arrow::write_parquet(file.path(out_dir,"samples.parquet"))
+        }
+        
+        sample_names <- arrow::open_dataset(file.path(out_dir,"samples.parquet")) |> 
+            dplyr::collect() |> 
+            dplyr::pull(sample)
+        
+        if (2 %in% steps) {
+            message("Step 2: sites")
+            if (is.null(site_file)) 
+                site_file <- in_dir
+            load_tt_sites(site_file) |>
+                arrow::write_parquet(file.path(out_dir,"sites.parquet"))
+        }
+        
+        if (3 %in% steps) {
+            message("Step 3: reads")
+            ensure_dir(out_dir, "reads")
+            parallel_walk(sample_names, \(sample) {
+                bam_file <- file.path(in_dir,"samples",sample,"alignments_filtered_sorted.bam")
+                clips_file <- file.path(in_dir,"samples",sample,"clipped_reads.clips.gz")
+                load_bam_into(
+                    file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
+                    bam_file,
+                    tail_source=tail_source, 
+                    read_pairs_dir=read_pairs_dir,
+                    clips_file=clips_file,
+                    limit=limit, 
+                    keep_secondary=TRUE, # Tail Tools has already filtered to one alignment per read
+                    keep_multimappers=keep_multimappers)
+            })
+        }
+        
+        if (4 %in% steps) {
+            message("Step 4: sited_reads")
+            ensure_dir(out_dir, "sited_reads")
+            parallel_walk(sample_names, \(sample) {
+                sites <- load_parquet(out_dir,".","sites.parquet")
+                site_reads_into(
+                    file.path(out_dir,"sited_reads",paste0(sample,".sited_reads.parquet")),
+                    file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
+                    sites, site_pad=site_pad, site_upstrand=site_upstrand)
+            })
+        }
+        
+        if (5 %in% steps) {
+            message("Step 5: tail_counts")
+            ensure_dir(out_dir,"tail_counts")
+            parallel_walk(sample_names, \(sample) {
+                load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
+                    count_tails(min_tail=min_tail, length_trim=length_trim, must_be_close_to_site=must_be_close_to_site) |>
+                    arrow::write_parquet(file.path(out_dir,"tail_counts",paste0(sample,".tail_counts.parquet")))
+            })
+        }
+        
+        if (6 %in% steps) {
+            message("Step 6: counts")
+            ensure_dir(out_dir,"counts")
+            parallel_walk(sample_names, \(sample) {
+                load_parquet(out_dir,"sited_reads",sample,".sited_reads.parquet") |>
+                    count_umis() |>
+                    arrow::write_parquet(file.path(out_dir,"counts",paste0(sample,".counts.parquet")))
+            })
+        }
+        
+        # Delete any cached files, as they may be out of date
+        clean_up_files(file.path(out_dir, "cache"), "\\.qs2$")
+        
+        if (7 %in% steps) {
+            message("Step 12: warm up cache")
+            tq_warmup(tq_load(out_dir))
+        }
+    })
 }
 
 

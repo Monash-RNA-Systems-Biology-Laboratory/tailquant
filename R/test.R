@@ -134,15 +134,22 @@ tq_test_quantile <- function(tq, prop, design, contrasts, fdr=0.05, min_count=10
 }
 
 
-tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, title="a test") {
+tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_count_in=1, three_prime_only=TRUE, title="a test") {
     check_design(tq, design)
     
     counts <- tq_counts(tq)
     counts <- counts[,rownames(design),drop=FALSE]
     
     sites <- tq@sites |>
-        dplyr::select(site, chr, pos, strand, gene_id, name, biotype, product) |>
-        dplyr::collect() |>
+        dplyr::select(site, chr, pos, strand, gene_id, relation, name, biotype, product) |>
+        dplyr::collect()
+    
+    if (three_prime_only) {
+        sites <- sites |>
+            dplyr::filter(relation %in% c("3'UTR","3'Noncoding","Downstrand"))
+    }
+    
+    sites <- sites |>
         dplyr::filter(dplyr::n() >= 2, .by=gene_id) |>
         dplyr::arrange(gene_id, pos*strand)
     
@@ -182,22 +189,6 @@ tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_cou
 
 
 test_types <- list(
-    "expression" = list(
-        title="Site expression",
-        func=tq_test_expression, 
-        version=5),
-    "expression13" = list(
-        title="Site expression, tail of at least 13",
-        func=\(tq, ...) tq_test_expression(tq, min_tail=13, ...), 
-        version=5),
-    "expression20" = list(
-        title="Site expression, tail of at least 20",
-        func=\(tq, ...) tq_test_expression(tq, min_tail=20, ...), 
-        version=5),
-    "expression30" = list(
-        title="Site expression, tail of at least 30",
-        func=\(tq, ...) tq_test_expression(tq, min_tail=30, ...), 
-        version=5),
     "expressiongenesum" = list(
         title="Gene aggregate expression",
         func=\(tq, ...) tq_test_expression(tq, genesums=TRUE, ...), 
@@ -214,10 +205,30 @@ test_types <- list(
         title="Gene aggregate expression, tail of at least 30",
         func=\(tq, ...) tq_test_expression(tq, min_tail=30, genesums=TRUE, ...), 
         version=5),
-    "shift" = list(
-        title="End shift",
-        func=tq_test_shift,
+    "expression" = list(
+        title="Site expression",
+        func=tq_test_expression, 
         version=5),
+    "expression13" = list(
+        title="Site expression, tail of at least 13",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=13, ...), 
+        version=5),
+    "expression20" = list(
+        title="Site expression, tail of at least 20",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=20, ...), 
+        version=5),
+    "expression30" = list(
+        title="Site expression, tail of at least 30",
+        func=\(tq, ...) tq_test_expression(tq, min_tail=30, ...), 
+        version=5),
+    "shiftend" = list(
+        title="End shift, sites in 3' region",
+        func=\(tq, ...) tq_test_shift(tq, three_prime_only=TRUE, ...),
+        version=6),
+    "shiftall" = list(
+        title="End shift, all sites",
+        func=\(tq, ...) tq_test_shift(tq, three_prime_only=FALSE, ...),
+        version=6),
     "quantile90" = list(
         title="Tail length, 90% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.9, ...), 

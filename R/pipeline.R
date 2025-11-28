@@ -31,7 +31,7 @@ run_tq <- function(
         tail_excess_required=5,
         a_prop=0.6,
         keep_multimappers=TRUE,
-        steps=1:11) {
+        steps=1:12) {
     
     args <- as.list(environment())
     ensure_dir(out_dir)
@@ -91,7 +91,6 @@ run_tq <- function(
                     read_pairs_dir=in_dir,
                     keep_secondary=FALSE, # Working with raw STAR output, so need to filter these
                     keep_multimappers=keep_multimappers)
-                NULL
             })
         }
         
@@ -115,7 +114,6 @@ run_tq <- function(
                     file.path(out_dir,"sited_reads_qc",paste0(sample,".sited_reads_qc.parquet")),
                     file.path(out_dir,"reads",paste0(sample,".reads.parquet")),
                     sites, site_pad=site_pad, site_upstrand=site_pad) # Only use reads immediately near site!
-                NULL
             })
         }
         
@@ -221,6 +219,11 @@ run_tq <- function(
         
         # Delete any cached files, as they may be out of date
         clean_up_files(file.path(out_dir, "cache"), "\\.qs2$")
+        
+        if (12 %in% steps) {
+            message("Step 12: warm up cache")
+            tq_warmup(tq_load(out_dir))
+        }
         
         message("Finished")
     })

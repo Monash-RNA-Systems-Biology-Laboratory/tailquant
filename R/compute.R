@@ -323,3 +323,22 @@ tq_site_stats <- function(tq, samples=NULL) {
         result
     })
 }
+
+
+#' Ensure some computations are cached.
+#'
+#' Ensure some computations are cached, specifically those likely to be used by the Shiny app.
+#'
+#' @param tq A TailQuant object.
+#'
+#' @export
+tq_warmup <- function(tq) {
+    tq_tail_range(tq)
+    tq_sample_stats(tq)
+    tq_lib_sizes(tq)
+    tq_site_stats(tq)
+    parallel_walk(c(0.5, 0.25, 0.75, 0.1, 0.9), \(prop) {
+        tq_quantiles(tq, prop)
+    })
+}
+

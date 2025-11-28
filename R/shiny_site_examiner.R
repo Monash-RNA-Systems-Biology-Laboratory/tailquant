@@ -85,7 +85,7 @@ site_ui <- function(tq, max_tail=NA) {
         
         n_reads = Number of reads.
         
-        n_tail_reads = Number of reads ending near the actual site rather than upstrand, and with a poly(A) tail.
+        n_tail_reads = Number of reads with a measured poly(A) tail.
         
         n = Number of UMIs.
         
