@@ -163,7 +163,7 @@ tq_test_shift <- function(tq, design, contrasts, fdr=0.05, min_count=10, min_cou
     cal <- weitrix::weitrix_calibrate_all(wei, design)
     
     result <- weitrix::weitrix_confects(cal, design=design, contrasts=contrasts, fdr=fdr, full=TRUE)
-    result$title <- paste0("End shift: ", title)
+    result$title <- paste0("End shift, ", ifelse(three_prime_only,"3' region","all sites"), ": ", title)
     result$what <- "genes"
     
     # x-axis on MD plot should be average expression
@@ -224,11 +224,11 @@ test_types <- list(
     "shiftend" = list(
         title="End shift, sites in 3' region",
         func=\(tq, ...) tq_test_shift(tq, three_prime_only=TRUE, ...),
-        version=6),
+        version=7),
     "shiftall" = list(
         title="End shift, all sites",
         func=\(tq, ...) tq_test_shift(tq, three_prime_only=FALSE, ...),
-        version=6),
+        version=7),
     "quantile90" = list(
         title="Tail length, 90% are longer",
         func=\(tq, ...) tq_test_quantile(tq, 0.9, ...), 
