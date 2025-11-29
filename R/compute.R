@@ -2,10 +2,19 @@
 cache_state <- rlang::new_environment(list(workers=list(), tries=list()))
 
 # May throw error!
+# Ideal usage would be to call it until it stops throwing errors.
 drain_cache_workers <- function() {
-    cache_state$workers <- purrr::discard(cache_state$workers, \(item) {
-        if (future::resolved(item)) { future::value(item); TRUE } else FALSE
-    })
+    i <- 1
+    while(i <= length(cache_state$workers)) {
+        if (future::resolved(cache_state$workers[[i]])) {
+            item <- cache_state$workers[[i]]
+            cache_state$workers <- cache_state$workers[ -i ]
+            # May throw error:
+            future::value(item)
+        } else {
+            i <- i + 1
+        }
+    }
     
     NULL
 }
