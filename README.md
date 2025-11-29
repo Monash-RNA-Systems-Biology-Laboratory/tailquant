@@ -137,6 +137,9 @@ ingest_tt(
 ## Shiny app
 
 ```r
+# Allow shiny app to use background workers. Optional, fragile.
+future::plan(future::multicore, workers=8)
+
 # Open Shiny app
 tq <- load_tq("my_output_dir")
 app <- tq_shiny(tq, title="Tail length examiner for this dataset")

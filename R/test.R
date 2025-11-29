@@ -257,6 +257,7 @@ tq_test <- function(
         test,
         cache_key=NA,
         spec=NULL,
+        blocking=TRUE,
         ...) {
     name <- NA
     if (!is.na(cache_key)) 
@@ -273,6 +274,6 @@ tq_test <- function(
         do.call(test_spec$func, c(list(tq=tq), spec))
     }
     
-    tq_get_cache(tq, func=func, name=name, version=version)
+    tq_get_cache(tq, func=func, name=name, version=version, blocking=blocking)
 }
 

@@ -222,7 +222,7 @@ run_tq <- function(
         
         if (12 %in% steps) {
             message("Step 12: warm up cache")
-            tq_warmup(tq_load(out_dir))
+            tq_warmup(load_tq(out_dir))
         }
         
         message("Finished")

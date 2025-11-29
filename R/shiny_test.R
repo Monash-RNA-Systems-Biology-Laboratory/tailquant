@@ -48,6 +48,9 @@ test_ui <- function(tq, tests) {
 }
 
 test_server <- function(input, output, session, tq, tests) {
+    lockname <- ""
+    delay <- 1000
+    
     results <- reactive(withProgress(message="Testing", value=NA, {
         #req(input$test_name != "none")
         
@@ -60,7 +63,8 @@ test_server <- function(input, output, session, tq, tests) {
             "_min",spec$min_count,
             "_in",spec$min_count_in,
             "_fdr",spec$fdr)
-        tq_test(tq, input$test_type, cache_key=cache_key, spec=spec)
+        
+        shiny_nonblocking( tq_test(tq, input$test_type, cache_key=cache_key, spec=spec, blocking=FALSE) )
     }))
     
     ylim <- reactive({

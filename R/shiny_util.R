@@ -1,4 +1,16 @@
 
+# Tell shiny about nonblocking cache computations
+shiny_nonblocking <- function(expr) {
+    tryCatch({
+        expr
+    }, error_tailquant_running=\(e) {
+        delay <- 1.1 ** e$tailquant_tries
+        shiny::invalidateLater(delay*1000)
+        shiny::validate(paste0("Background calculation running. App remains responsive. Checking again in ", round(delay, 1), " seconds. ", future::nbrOfFreeWorkers(),"/",future::nbrOfWorkers(), " background workers free."))
+    })
+}
+
+
 plot_ui <- function(id, width=800, height=600, margin_controls=TRUE, ...) {
     ns <- shiny::NS(id)
 

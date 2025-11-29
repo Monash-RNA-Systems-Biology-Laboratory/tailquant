@@ -1,35 +1,91 @@
 
-# Compute values from a tailquant directory
+cache_state <- rlang::new_environment(list(workers=list(), tries=list()))
 
-tq_get_cache <- function(tq, func, name=NA, version=NULL) {
-    have_name <- !is.na(name)
+# May throw error!
+drain_cache_workers <- function() {
+    cache_state$workers <- purrr::discard(cache_state$workers, \(item) {
+        if (future::resolved(item)) { future::value(item); TRUE } else FALSE
+    })
+    
+    NULL
+}
+
+# Compute values from a tailquant directory
+# - Use lock to prevent multiply simultaneous computations, writes.
+# - File is moved into place once written.
+tq_get_cache <- function(tq, func, name, version=NULL, blocking=TRUE, timeout=Inf) {
+    # Always be draining cache workers.
+    # May throw some random error! At least we don't lose the error entirely.
+    if (!blocking)
+        drain_cache_workers()
+    
+    dir.create(file.path(tq@dir, "cache", "lock"), showWarnings=FALSE)
+    filename <- file.path(tq@dir, "cache", name)
+    lockname <- file.path(tq@dir, "cache", "lock", paste0("lock_", name))
+    writename <- file.path(tq@dir, "cache", "lock", paste0("write_", name))
+    
     have <- FALSE
+    result <- NULL
     
-    if (have_name) {
-        filename <- file.path(tq@dir, "cache", name)
-    }
-    
-    if (have_name && file.exists(filename)) {
-        #message("Have ", name)
-        result <- qs2::qs_read(filename)
-        have <- is.null(version) || identical(version, attr(result, "version"))
-        if (!have) {
-            warning("Version mismatch, updating ", name)
-        }
-    }
-    
-    if (!have) {
-        #message("Computing ", name)
-        result <- func()
-        if (!is.null(version)) {
-            attr(result, "version") <- version
+    get_it <- function() {
+        if (file.exists(filename)) {
+            result <<- qs2::qs_read(filename)
+            have <<- TRUE
         }
         
-        if (have_name) {
-            dir.create(file.path(tq@dir, "cache"), showWarnings=FALSE)
-            qs2::qs_save(result, filename)
+        if (have) {
+            have <<- identical(version, attr(result, "version"))
+            if (!have) {
+                warning("Version mismatch, updating ", name)
+            }
         }
     }
+    
+    get_it()
+    if (have) return(result)
+    
+    #if (!blocking) 
+    #    message("Free: ", future::nbrOfFreeWorkers())
+    
+    if (!blocking && future::nbrOfFreeWorkers() > 0) {
+        # Launch worker and forget about it
+        # Note: worker will immediately exit if there is already a worker, due to timeout=0
+        cache_state$workers[[ length(cache_state$workers)+1 ]] <- future::future(seed=NULL, {
+            tailquant:::tq_get_cache(tq=tq, func=func, name=name, version=version, timeout=0)
+            NULL
+        })
+        
+        #message("Workers: ", length(cache_state$workers))
+        
+        # Future may already have resolved, eg if using sequential plan
+        drain_cache_workers()
+        get_it()
+        if (have) return(result)
+        
+        tries <- cache_state$tries[[ lockname ]]
+        tries <- if (is.null(tries)) 1 else tries + 1
+        cache_state$tries[[ lockname ]] <- tries
+        
+        rlang::abort("Background worker launched", class="error_tailquant_running", tailquant_tries=tries)
+    }
+    
+    # Time to acquire the write lock
+    lock <- NULL
+    withr::defer({ if (!is.null(lock)) filelock::unlock(lock) })
+    lock <- filelock::lock(lockname, timeout=timeout)
+    
+    # We're a worker, and someone is already working, just return NULL.
+    if (is.null(lock)) return(NULL)
+    
+    # Try to load again, as we may have waited for a computation to finish.
+    get_it()
+    if (have) return(result)
+    
+    result <- func()
+    attr(result, "version") <- version
+    
+    qs2::qs_save(result, writename)
+    file.rename(writename, filename)
     
     result
 }
@@ -271,7 +327,7 @@ counts_genesums <- function(counts, tq) {
 #' (Used in site table of shiny app.)
 #'
 #' @export
-tq_site_stats <- function(tq, samples=NULL) {
+tq_site_stats <- function(tq, samples=NULL, blocking=TRUE) {
     if (is.null(samples)) 
         samples <- tq@samples$sample
     
@@ -279,7 +335,7 @@ tq_site_stats <- function(tq, samples=NULL) {
     key <- rlang::hash(samples)
     name <- paste0("site_stats_",key,".qs2")
     
-    tq_get_cache(tq, name=name, version=samples, \() {
+    tq_get_cache(tq, name=name, version=samples, blocking=blocking, \() {
         keep <- tq@samples$sample %in% samples
         tail_counts <- combine_tail_counts(tq@samples$tail_counts[keep])
         

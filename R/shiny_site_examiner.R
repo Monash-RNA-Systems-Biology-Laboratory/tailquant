@@ -49,7 +49,7 @@ site_ui <- function(tq, max_tail=NA) {
         shiny::p(),
         shiny::fluidRow(
             shiny::column(width=6,
-                shiny::textInput("sample_select", "Sample selection (regular expression)", value=".*", width="50%"),
+                shiny::textInput("sample_select", "Sample selection (regular expression)", value="", width="50%"),
                 shiny::textInput("sample_select_stats", "Sample selection for table stats (regular expression)", value="", width="50%"),
                 shiny::tableOutput("sample_table")),
             shiny::column(width=6,
@@ -169,10 +169,12 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     
     
     sites <- reactive(withProgress(message="Computing", value=NA, {
-        tq@sites |>
-            dplyr::select(site, name, location, relation, biotype, gene_id, product) |>
-            dplyr::collect() |>
-            dplyr::left_join(tq_site_stats(tq, sample_names_stats()), by="site")
+        shiny_nonblocking({
+            tq@sites |>
+                dplyr::select(site, name, location, relation, biotype, gene_id, product) |>
+                dplyr::collect() |>
+                dplyr::left_join(tq_site_stats(tq, sample_names_stats(), blocking=FALSE), by="site")
+        })
     }))
     
     df <- shiny::reactive({
