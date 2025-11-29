@@ -1,33 +1,11 @@
 
-cache_state <- rlang::new_environment(list(workers=list(), tries=list()))
-
-# May throw error!
-# Ideal usage would be to call it until it stops throwing errors.
-drain_cache_workers <- function() {
-    i <- 1
-    while(i <= length(cache_state$workers)) {
-        if (future::resolved(cache_state$workers[[i]])) {
-            item <- cache_state$workers[[i]]
-            cache_state$workers <- cache_state$workers[ -i ]
-            # May throw error:
-            future::value(item)
-        } else {
-            i <- i + 1
-        }
-    }
-    
-    NULL
-}
+# Place to keep track of number of checks on background jobs
+cache_state <- rlang::new_environment(list(tries=list()))
 
 # Compute values from a tailquant directory
 # - Use lock to prevent multiply simultaneous computations, writes.
 # - File is moved into place once written.
 tq_get_cache <- function(tq, func, name, version=NULL, blocking=TRUE, timeout=Inf) {
-    # Always be draining cache workers.
-    # May throw some random error! At least we don't lose the error entirely.
-    if (!blocking)
-        drain_cache_workers()
-    
     dir.create(file.path(tq@dir, "cache", "lock"), showWarnings=FALSE)
     filename <- file.path(tq@dir, "cache", name)
     lockname <- file.path(tq@dir, "cache", "lock", paste0("lock_", name))
@@ -53,21 +31,20 @@ tq_get_cache <- function(tq, func, name, version=NULL, blocking=TRUE, timeout=In
     get_it()
     if (have) return(result)
     
-    #if (!blocking) 
-    #    message("Free: ", future::nbrOfFreeWorkers())
-    
     if (!blocking && future::nbrOfFreeWorkers() > 0) {
-        # Launch worker and forget about it
-        # Note: worker will immediately exit if there is already a worker, due to timeout=0
-        cache_state$workers[[ length(cache_state$workers)+1 ]] <- future::future(seed=NULL, {
-            tailquant:::tq_get_cache(tq=tq, func=func, name=name, version=version, timeout=0)
-            NULL
-        })
-        
-        #message("Workers: ", length(cache_state$workers))
+        # Launch worker and forget about it.
+        # Conversion to promise ensures the future is cleaned up properly.
+        future::future(seed=NULL, {
+                tailquant:::tq_get_cache(tq=tq, func=func, name=name, version=version, timeout=0)
+                NULL
+            }) |> 
+            promises::as.promise() |>
+            promises::catch(\(e) {
+                if (!inherits(e, "error_tailquant_locked"))
+                    message("Background worker error: ", e$message) 
+            })
         
         # Future may already have resolved, eg if using sequential plan
-        drain_cache_workers()
         get_it()
         if (have) return(result)
         
@@ -82,9 +59,8 @@ tq_get_cache <- function(tq, func, name, version=NULL, blocking=TRUE, timeout=In
     lock <- NULL
     withr::defer({ if (!is.null(lock)) filelock::unlock(lock) })
     lock <- filelock::lock(lockname, timeout=timeout)
-    
-    # We're a worker, and someone is already working, just return NULL.
-    if (is.null(lock)) return(NULL)
+    if (is.null(lock))
+        rlang::abort("Lock acquisition timed out.", class="error_tailquant_locked")
     
     # Try to load again, as we may have waited for a computation to finish.
     get_it()

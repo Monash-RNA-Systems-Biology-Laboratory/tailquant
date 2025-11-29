@@ -12,6 +12,7 @@ Imports:
     rlang,
     withr,
     future,
+    promises,
     parallel,
     arrow,
     jsonlite,
