@@ -147,29 +147,57 @@ transcript_to_ranges <- function(gene_id, transcript_id, exons, cds, pad, extens
     seqnames <- exons$seqnames[1]
     strand <- exons$strand[1]
     
-    exons <- dplyr::filter(exons, end+1 >= trim_to)
-    exons$start <- pmax(exons$start, trim_to)
-    exons$start <- exons$start - pad
-    exons$end <- exons$end + pad
+    end_exons <- dplyr::filter(exons, end+1 >= trim_to)
+    end_exons$start <- pmax(end_exons$start, trim_to)
+    end_exons$start <- end_exons$start - pad
+    end_exons$end <- end_exons$end + pad
+    end_exons$relation <- relation
+    end_exons$priority <- 1
     
-    exons$gene_id <- gene_id
-    exons$transcript_id <- transcript_id
-    exons$relation <- relation
-    exons$transcript_end <- end
-    exons$cds_end <- cds_end
     if (extension <= 0)
-        extensions <- NULL
+        extension <- NULL
     else
-        extensions <- dplyr::tibble(
-            type="extension", gene_id, transcript_id, 
-            seqnames, strand, transcript_end=end, cds_end,
+        extension <- dplyr::tibble(
+            type="extension", 
             relation="Downstrand",
-            start=last(exons$end)+1, 
+            priority=1,
+            seqnames, strand,
+            start=last(end_exons$end)+1, 
             end=start+extension-1)
     
+    exons$start <- exons$start - pad
+    exons$end <- exons$end + pad
+    exons$relation <- "Exon"
+    exons$priority <- 3
+    
+    cds$start <- cds$start - pad
+    cds$end <- cds$end + pad
+    cds$relation <- "CDS"
+    cds$priority <- 2
+    
+    transcript <- dplyr::tibble( # Any part of the transcript not covered by other things is an intron.
+        type="transcript",
+        relation="Intron",
+        priority=4,
+        seqnames, strand, 
+        start=start-pad, 
+        end=end+pad)
+    
+    with_attrs <- function(sr) {
+        if (is.null(sr)) return(sr)
+        sr$gene_id <- gene_id
+        sr$transcript_id <- transcript_id
+        sr$transcript_end <- end
+        sr$cds_end <- cds_end
+        sr
+    }
+    
     list(
-        exons=exons,
-        extensions=extensions)
+        transcript=with_attrs(transcript),
+        exons=with_attrs(exons),
+        cds=with_attrs(cds),
+        end_exons=with_attrs(end_exons),
+        extension=with_attrs(extension))
 }
 
 
@@ -243,27 +271,29 @@ gff_to_site_assigner <- function(gff_features, extension, pad=10, noncoding_prop
         \(gene_id,transcript_id,exons,cds,...) 
         transcript_to_ranges(gene_id, transcript_id, exons, cds, 
             pad=pad, extension=extension, noncoding_prop=noncoding_prop))
-    exon_ranges <- purrr::map(result,"exons") |> dplyr::bind_rows()
-    ext_ranges <- purrr::map(result,"extensions") |> dplyr::bind_rows()
     
-    # Extension ranges are trimmed to stop before any overlapping exon.
+    transcript_ranges <- purrr::map(result,"transcript") |> dplyr::bind_rows()
+    exon_ranges <- purrr::map(result,"exons") |> dplyr::bind_rows()
+    cds_ranges <- purrr::map(result,"cds") |> dplyr::bind_rows()
+    end_exon_ranges <- purrr::map(result,"end_exons") |> dplyr::bind_rows()
+    ext_ranges <- purrr::map(result,"extension") |> dplyr::bind_rows()
+    
+    # Extension ranges are trimmed to stop before any overlapping end_exon.
     # If an exon overlaps the start of an extension, this will remove it.
     if (nrow(ext_ranges) > 0) {
-        overlaps <- sranges_find_overlaps(ext_ranges, exon_ranges)
+        overlaps <- sranges_find_overlaps(ext_ranges, end_exon_ranges)
         for(i in seq_len(nrow(overlaps))) {
             i1 <- overlaps$index1[i]
             i2 <- overlaps$index2[i]
-            ext_ranges$end[i1] <- min(ext_ranges$end[i1], exon_ranges$start[i2]-1)
+            ext_ranges$end[i1] <- min(ext_ranges$end[i1], end_exon_ranges$start[i2]-1)
         }
         ext_ranges <- dplyr::filter(ext_ranges, end >= start)
     }
     
     # If pad==0, we might have some empty exons. We can discard them now.
-    exon_ranges <- dplyr::filter(exon_ranges, end >= start)
+    end_exon_ranges <- dplyr::filter(end_exon_ranges, end >= start)
     
-    exon_ranges$is_extension <- TRUE
-    ext_ranges$is_extension <- FALSE
-    result <- dplyr::bind_rows(exon_ranges, ext_ranges)
+    result <- dplyr::bind_rows(transcript_ranges, exon_ranges, cds_ranges, end_exon_ranges, ext_ranges)
     
     # Annotate with gene information
     result <- dplyr::left_join(result, genes, by="gene_id")
@@ -284,6 +314,9 @@ gff_to_site_assigner <- function(gff_features, extension, pad=10, noncoding_prop
     df <- dplyr::select(result[hits$index2,], !c(seqnames,start,end,strand))
     df$index1 <- hits$index1
     df <- df |>
+        dplyr::filter( # Only keep highest priority ranges (i.e. prefer 3' end and extension)
+            .by=index1,
+            priority == min(priority)) |> 
         dplyr::summarize(
             .by=index1,
             good = length(unique(gene_id)) == 1,
@@ -294,11 +327,18 @@ gff_to_site_assigner <- function(gff_features, extension, pad=10, noncoding_prop
             has_cds = any(has_cds),
             transcript_end = max(transcript_end),
             cds_end = if (all(is.na(cds_end))) NA else max(cds_end, na.rm=TRUE),
-            relation = first_match(relation, c("3'UTR","3'Noncoding","Downstrand")))
+            relation = first_match(relation, c("3'UTR","3'Noncoding","Downstrand","CDS","Exon","Intron")))
     df <- dplyr::bind_cols(dj[df$index1,], dplyr::select(df, !index1))
     
     df$type <- "region"
-    df$color <- ifelse(df$relation == "Downstrand", "#880088", "#888800")
+    df$color <- c(
+        "Downstrand"="#880088", 
+        "3'UTR"="#888800",
+        "3'Noncoding"="#880000",
+        "CDS"="#008800",
+        "Exon"="#000088",
+        "Intron"="#888888"
+        )[df$relation]
     
     assigner <- df |>
         dplyr::filter(good) |>

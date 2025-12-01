@@ -34,7 +34,11 @@ run_tq <- function(
         steps=1:12) {
     
     args <- as.list(environment())
+    
+    reference <- ensure_reference(reference)
+    
     ensure_dir(out_dir)
+    
     with_log(file.path(out_dir,"log.txt"), \(log) {
         
         cat(file=log, paste0(
@@ -119,7 +123,7 @@ run_tq <- function(
         
         if (7 %in% steps) {
             message("Step 7: make site assigner")
-            gff <- rtracklayer::import(reference$annotation)
+            gff <- ensure_granges(reference$annotation)
             result <- gff_to_site_assigner(gff,
                 extension=extension, pad=site_pad, noncoding_prop=noncoding_prop)
             rtracklayer::export(result$assigner, file.path(out_dir, "assigner.gff3"), format="gff3", index=TRUE)
@@ -136,7 +140,7 @@ run_tq <- function(
                 dplyr::collect()
             sites <- sites_assign(sites, assigner)
             
-            genome <- Biostrings::readDNAStringSet(reference$genome)
+            genome <- ensure_dna(reference$genome)
             names(genome) <- gsub("\\s.*","", names(genome))
             
             sites <- qc_sites(sites, 

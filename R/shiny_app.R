@@ -42,7 +42,7 @@ tq_shiny_server <- function(input, output, session, tq, tests) {
         want <- test_get$sites_wanted()
         if (length(want$name) == 1) {
             if (want$what == "genes")
-                query <- paste0("gene_id=^",stringr::str_escape(want$name),"$")
+                query <- paste0("gene_id=^",stringr::str_escape(want$name),"$ by=signed_pos")
             else
                 query <- paste0("site=^",stringr::str_escape(want$name),"$")
             shiny::updateTextInput(session, "search", value=query)

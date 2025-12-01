@@ -6,17 +6,24 @@ site_table_search <- function(df, query) {
     parts <- parts[nchar(parts) > 0]
     
     keep <- rep(TRUE, nrow(df))
+    by <- NA
     for(part in parts) {
         this_query <- stringr::fixed(part, ignore_case=TRUE)
         cols <- colnames(df)
         found <- rep(FALSE, nrow(df))
         search <- TRUE
         match <- stringr::str_match(part,"(.*?)=(.*)")
+        
         if (!is.na(match[2])) {
             if (match[2] == "top") {
                 n <- as.integer(match[3])
                 if (!is.na(n))
                     found <- seq_len(nrow(df)) <= n
+                search <- FALSE
+            } else if (match[2] == "by") {
+                if (match[3] %in% cols)
+                    by <- match[3]
+                found <- rep(TRUE, nrow(df))
                 search <- FALSE
             } else if (match[2] %in% cols && match[3] != "") {
                 cols <- match[2]
@@ -34,6 +41,10 @@ site_table_search <- function(df, query) {
         keep <- keep & found
     }
     df <- df[keep,]
+    
+    if (!is.na(by))
+        df <- df[order(df[[by]]),]
+    
     df
 }
 
@@ -171,7 +182,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     sites <- reactive(withProgress(message="Computing", value=NA, {
         shiny_nonblocking({
             tq@sites |>
-                dplyr::select(site, name, location, relation, biotype, gene_id, product) |>
+                dplyr::select(site, name, location, chr, pos, strand, relation, biotype, gene_id, product) |>
                 dplyr::collect() |>
                 dplyr::left_join(tq_site_stats(tq, sample_names_stats(), blocking=FALSE), by="site")
         })
@@ -182,7 +193,8 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
         
         result <- result |>
             dplyr::transmute(
-                site, name, location, n=all_n, tail_n, tail_n_ended=tail_n_died, 
+                site, name, location, chr, pos, strand, signed_pos=pos*strand, 
+                n=all_n, tail_n, tail_n_ended=tail_n_died, 
                 tail90, tail50, tail10, 
                 multimapping=all_n_read_multimapper / all_n_read,
                 #tightness=tail90/tail10, 
@@ -249,7 +261,7 @@ site_server <- function(input, output, session, tq) { #, get_sites_wanted=functi
     })
     
     output$table <- DT::renderDT(server=TRUE, {
-        df_show <- dplyr::select(df(), !product)
+        df_show <- dplyr::select(df(), !c(chr, pos, strand, signed_pos, product))
         DT::datatable(
                 df_show,
                 selection='single',
