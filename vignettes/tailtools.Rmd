@@ -1,5 +1,5 @@
 ---
-title: "Usage alongside Tail Tools"
+title: "Usage with the older Tail Tools package"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Usage alongside Tail Tools}
@@ -7,41 +7,49 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
+[Tail Tools](https://github.com/Monash-RNA-Systems-Biology-Laboratory/tail-tools) is our lab's older package for processing PAT-Seq sequencing data. This article describes hybrid usage of tailquant and Tail Tools.
 
-## Usage after Tail Tools
 
-tailquant can ingest the output of our earlier Tail Tools pipeline.
+## Usage after Tail Tools with older PAT-Seq data
+
+Older PAT-Seq data was received as single-ended reads in demultiplexed form, which would then be fed directly to the Tail Tools pipeline.
+
+tailquant could then be used to ingest the output of the Tail Tools pipeline:
 
 ```r
 library(tailquant)
 
-# Enable multiprocessing.
-# - Optional! Fragile!
-# - Do not use from within RStudio, except by invoking R in the terminal.
-# - future::multisession may also work, if multicore isn't available, or it may also fail.
+# Enable multiprocessing (optional, fragile).
 future::plan(future::multicore, workers=8)
 
 # Process an existing Tail Tools pipeline.
 # Creates a new directory called my_output_dir
 ingest_tt(
-    out_dir="my_output_dir", 
-    in_dir="my_tail_tools_pipeline_dir",
-    tail_source="tt", # Where to get tail lengths from. "tt" means from Tail Tools output.
-    site_pad=10,      # (default) Reads alignments ending +/-10 bases of a site are examined.
-    min_tail=13,      # (default) Minimum "A"s to consider as having a poly(A) tail.
-    length_trim=10    # (default) poly(A) tail reaching within 10 bases of the end 
-                      #           we treat as not having ended.
-)
+     out_dir="my_output_dir"
+    ,in_dir="my_tail_tools_pipeline_dir"
+    ,tail_source="tt"  # Where to get tail lengths from. "tt" means from Tail Tools output.
+    ,site_pad=10       # (default) Reads alignments ending +/-10 bases of a site are examined.
+    ,min_tail=13       # (default) Minimum "A"s to consider as having a poly(A) tail.
+    ,length_trim=10    # (default) poly(A) tail reaching within 10 bases of the end 
+                       #           we treat as not having ended.
+    )
 ```
 
+You can then use the resulting directory with the Shiny app, as described in the "Usage" article.
 
-## Demultiplexing and poly(T) length calling
+
+## Demultiplexing and poly(T) length calling for newer PAT-Seq data
 
 tailquant can be used to demultiplex reads before using Tail Tools. It can then make use of poly(T) length information from read 2 if this is available.
 
-See the "Usage" vignette for how to run `ingest_read_pairs()`. Then you can use the following to create fastq files for Tail Tools:
+See the "Usage" article for how to run `ingest_read_pairs()`. Then you can use the following to create fastq files for Tail Tools:
 
 ```r
+library(tailquant)
+
+# Enable multiprocessing (optional, fragile).
+future::plan(future::multicore, workers=8)
+
 demux_reads(
      out_dir="my_output_dir" 
     ,in_dir="reads"
@@ -50,11 +58,11 @@ demux_reads(
     )
 ```
 
-We've observed in read 1 there are often reads with long spans of "T"s. These are filtered by default by `demux_reads`. We would also always expect to see a poly(T) in read 2 corresponding the the poly(A) tail. `demux_reads` can also optionally filter reads that lack this.
+* We've observed in read 1 there are often reads with long spans of "T"s. These are filtered by default by `demux_reads`. We would also always expect to see a poly(T) in read 2 corresponding the the poly(A) tail. `demux_reads` can also optionally filter reads that lack this.
 
 `demux_reads` produces fastq files suitable for Tail Tools. Tail Tools should be run with the clipping setting `adaptor="rc_umi_rc_barcode"`.
 
-The poly(T) lengths can be used when ingesting Tail Tools output:
+The poly(T) lengths can then be used when ingesting Tail Tools output:
 
 ```r
 # Process an existing Tail Tools pipeline, but use poly(T) lengths.
@@ -62,23 +70,30 @@ The poly(T) lengths can be used when ingesting Tail Tools output:
 ingest_tt(
      out_dir="my_output_dir"
     ,in_dir="my_tail_tools_pipeline_dir"
-    ,tail_source="read2" # Where to get tail lengths from.
+    ,tail_source="read2"    # Where to get tail lengths from.
     ,read_pairs_dir="reads"
-    ,min_tail=13      # (default) Minimum "T"s to consider as having a poly(A) tail.
-    ,length_trim=0     # poly(T) should be fine reaching to the end of read2.
+    ,min_tail=13            # (default) Minimum "T"s to consider as having a poly(A) tail.
+    ,length_trim=0          # poly(T) should be fine reaching to the end of read2.
     )
 ```
 
+You can then use the resulting directory with the Shiny app, as described in the "Usage" article.
 
-### Using tests with the old Tail Tools differential test app
 
-Tests for tailquant can be converted to to work with the older Tail Tools software using the function `tests_to_tt()`.
+## Using tests with the old Tail Tools differential test Shiny app
+
+Tests for tailquant can be converted to work with the older Tail Tools software using the function `tests_to_tt()`.
+
+See the "Usage" vignette for how to create tailquant test specifications.
 
 ```r
+library(tailquant)
 library(tailtools)
 
+# ... create a variable called tests with the test specifications ...
+
 tt_app <- shiny_tests( 
-    tests_to_tt(tests, pipeline_dir="...Tail Tools output directory..."),
+    tests_to_tt(tests, pipeline_dir="my_tail_tools_pipeline_dir"),
     title="Tail Tools differential tests")
 
 tt_app

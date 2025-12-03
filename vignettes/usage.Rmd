@@ -10,22 +10,13 @@ vignette: >
 ## Getting started
 
 ```r
+# Load the package
 library(tailquant)
 
-# Enable multiprocessing.
-# - Optional! Fragile!
+# Enable multiprocessing (optional, fragile).
 # - Do not use from within RStudio, except by invoking R in the terminal.
 # - future::multisession may also work, if multicore isn't available, or it may also fail.
 future::plan(future::multicore, workers=6)
-```
-
-## Make a reference directory
-
-```r
-make_reference(
-     out_dir="my_reference_dir"     # This directory will be created
-    ,genome="genome.fasta"          # FASTA reference sequence
-    ,annotation="annotation.gff3")  # gff3 gene annotation
 ```
 
 ## Ingest reads
@@ -37,7 +28,7 @@ We expect read pairs with:
 
 Due to the primers used, the poly(T) sequence is expected to be of length at least 12. Seeing a poly(T) of 13 bases or more in read 2 indicates we are seeing real poly(A) tail and not just primer sequence.
 
-We also sometimes observe read pairs where there is a long span of "T"s in read 1. We think these are not real, and should be filtered. 
+We also sometimes observe read pairs where there is a long span of "T"s in read 1. We think these are not real, and should be filtered.
 
 ```r
 # ... 
@@ -52,21 +43,52 @@ We also sometimes observe read pairs where there is a long span of "T"s in read 
 # Step 1 loads all of the read pairs into a parquet file, 
 # and calls samples, quality clipping, poly(A), and poly(T) lengths.
 ingest_read_pairs(
-     out_prefix="reads"   # <- A directory called reads will be created
+     out_prefix="reads"       # A directory called reads will be created
     ,reads1="reads1.fastq.gz"
     ,reads2="reads2.fastq.gz"
-    ,clip_quality_char="I" # <- Check this is appropriate
+    ,clip_quality_char="I"    # Check this is appropriate
+    ,site_upstrand=300        # How far can a read alignment end upstrand of a site?
     ,samples=samples
     )
 
 ```
+
+* For `clip_quality_char`, choose the FASTQ quality character you consider high quality. For Illumina sequencing as of 2025 we generally use the highest quality seen in the file, which is currently "I" (quality 40).
 
 You can now examine `reads.peek.txt` and `reads.report.html` to assess quality. `reads.peek.txt` shows a random selection of reads, and tailquant's interpretation of where the poly(A) and poly(T) tails are. `reads.report.html` is an HTML report giving a summary of tail identification, sample assignment, and UMI usage.
 
 The parquet files in `my_output_dir` contain the input reads, sample assignment, UMIs, and information about poly(A) and poly(T) lengths. These are big files, so be sure to delete them once you are done with them.
 
 
+## Make a reference directory
+
+For each organism you work with, you will need a tailquant reference directory. We most commonly create these using ENSEMBL provided reference sequence and GFF3 format annotations.
+
+The `make_reference` function puts these in a directory with the filenames that tailquant expects, and creates a STAR index.
+
+```r
+make_reference(
+     out_dir="my_reference_dir"     # This directory will be created.
+    ,genome="genome.fasta"          # Input FASTA reference sequence.
+    ,annotation="annotation.gff3")  # Input GFF3 gene annotation.
+```
+
 ## Run pipeline
+
+```r
+run_tq(
+     out_dir      = "my_output_dir"    # <- A directory called my_output_dir will be created
+    ,in_dir       = "reads"            # The directory created by ingest_read_pairs.
+    ,sample_names = samples$sample     # Character vector of sample names.
+    ,reference    = "my_reference_dir" # Reference directory created by make_reference.
+    ,extension    = NNN                # Suggest 400 for yeast, 2000 for mouse/human/etc
+    #,steps        = 1:12              # Optionally resume from a specific step
+    )
+```
+
+* `extension` specifies how many bases to extend transcripts downstrand of their annotated end, for the purpose of assigning sites to genes. We typically use 400 for yeast, and 2000 for mouse, human, and similar.
+
+* `site_upstrand` is the number of bases upstrand of a called site that an alignment may end and still be assigned to that site. This might change depending on what sort of size selection was done in the lab. You can check if the default is reasonable using BAM and bigwig output from the pipeline.
 
 
 ## Shiny app

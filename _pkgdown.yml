@@ -2,3 +2,14 @@ url: "https://github.com/Monash-RNA-Systems-Biology-Laboratory/tailquant"
 template:
   bootstrap: 5
 
+articles:
+- title: Usage
+  navbar: ~
+  contents:
+  - usage
+  - tailtools
+- title: Details
+  navbar: ~
+  contents:
+  - data_dict
+

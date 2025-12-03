@@ -316,8 +316,10 @@ ingest_tt <- function(
         clean_up_files(file.path(out_dir, "cache"), "\\.qs2$")
         
         if (7 %in% steps) {
-            message("Step 12: warm up cache")
-            tq_warmup(tq_load(out_dir))
+            message("Step 12: create final files and warm up cache")
+            tq <- load_tq(out_dir)
+            tq_create_convenience_files(tq)
+            tq_warmup(tq)
         }
     })
 }

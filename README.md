@@ -11,6 +11,13 @@ Improved quantification of poly(A) tail length from PAT-Seq data. Designed to be
 * Faster to access data representation using parquet files.
 * Calling poly(A) tail length from poly(T) sequence observed in read 2.
 
+## Documentation
+
+* [Usage](https://rnasystems.erc.monash.edu/tailquant/articles/usage.html)
+* [Usage with the older Tail Tools package](https://rnasystems.erc.monash.edu/tailquant/articles/tailtools.html) 
+
+* [Function reference](https://rnasystems.erc.monash.edu/tailquant/reference/index.html)
+* [Data dictionary](https://rnasystems.erc.monash.edu/tailquant/articles/data_dict.html)
 
 ## Installation
 

@@ -3,6 +3,25 @@
 # Main tailquant pipeline
 #
 
+tq_create_final_files <- function(tq) {
+    sites <- tq@sites |>
+        dplyr::select(site, location, relation, gene_id, name, biotype) |>
+        dplyr::collect()
+    
+    genes <- tq_genes(tq) |>
+        dplyr::select(gene_id, name, biotype) 
+    
+    ensure_dir(tq@dir, "csv")
+    
+    dplyr::bind_cols(sites, round(tq_counts(tq))) |>
+        readr::write_csv(file.path(tq@dir, "csv", "site_counts.csv"), na="")
+    
+    gene_counts <- tq_counts(tq) |> counts_genesums(tq) |> round()
+    dplyr::bind_cols(genes[match(rownames(gene_counts), genes$gene_id),], gene_counts) |>
+        readr::write_csv(file.path(tq@dir, "csv", "gene_counts.csv"), na="")
+}
+
+
 #' Run tailquant pipeline
 #'
 #' @param tail_excess_required A site will only be used if the mean tail length exceeds the downstrand genomic A length by this much. This provides a filter for mispriming.
@@ -225,8 +244,10 @@ run_tq <- function(
         clean_up_files(file.path(out_dir, "cache"), "\\.qs2$")
         
         if (12 %in% steps) {
-            message("Step 12: warm up cache")
-            tq_warmup(load_tq(out_dir))
+            message("Step 12: create final files and warm up cache")
+            tq <- load_tq(out_dir)
+            tq_create_final_files(tq)
+            tq_warmup(tq)
         }
         
         message("Finished")
